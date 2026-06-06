@@ -1,0 +1,148 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Athletic Club | Gestión técnica</title>
+    <link rel="stylesheet" href="styles.css?v=20260606-2" />
+  </head>
+  <body>
+    <div class="app-shell">
+      <aside class="sidebar">
+        <div class="brand">
+          <div class="crest">AC</div>
+          <div>
+            <strong>Athletic Club</strong>
+            <span>Área técnica</span>
+          </div>
+        </div>
+        <nav class="nav-tabs" aria-label="Navegación principal">
+          <button class="nav-button active" data-view="squad">Plantilla</button>
+          <button class="nav-button" data-view="matches">Partidos</button>
+          <button class="nav-button" data-view="lineups">Alineaciones</button>
+          <button class="nav-button" data-view="gameplan">Plan de partido</button>
+        </nav>
+      </aside>
+
+      <main class="main-content">
+        <section class="toolbar">
+          <div>
+            <p class="eyebrow">Temporada 2026</p>
+            <h1 id="page-title">Plantilla</h1>
+          </div>
+          <div class="toolbar-actions">
+            <button class="primary-button" id="context-action-button" type="button">Añadir jugador</button>
+          </div>
+        </section>
+
+        <section id="squad-view" class="view active"></section>
+        <section id="matches-view" class="view"></section>
+        <section id="lineups-view" class="view"></section>
+        <section id="gameplan-view" class="view"></section>
+        <section id="match-detail-view" class="view"></section>
+      </main>
+    </div>
+
+    <dialog id="player-dialog" class="modal">
+      <form method="dialog" id="player-form" class="modal-card">
+        <div class="modal-header">
+          <h2 id="player-modal-title">Nuevo jugador</h2>
+          <button class="icon-button" value="cancel" type="submit" aria-label="Cerrar">×</button>
+        </div>
+        <input type="hidden" id="player-id" />
+        <label>
+          Nombre
+          <input id="player-name" required maxlength="60" />
+        </label>
+        <div class="form-grid">
+          <label>
+            Dorsal
+            <input id="player-number" required type="number" min="1" max="99" />
+          </label>
+          <label>
+            Fecha nacimiento
+            <input id="player-birthdate" required type="date" />
+          </label>
+        </div>
+        <label>
+          Posición
+          <select id="player-position" required>
+            <option>Portero</option>
+            <option>Defensa</option>
+            <option>Centrocampista</option>
+            <option>Delantero</option>
+          </select>
+        </label>
+        <label>
+          Lateralidad
+          <select id="player-laterality" required>
+            <option>Diestro</option>
+            <option>Zurdo</option>
+            <option>Ambos</option>
+          </select>
+        </label>
+        <label>
+          Foto opcional
+          <input id="player-photo" type="hidden" />
+          <input id="player-photo-file" type="file" accept="image/*" />
+        </label>
+        <div class="photo-preview" id="player-photo-preview"></div>
+        <div class="modal-actions">
+          <button class="danger-button" id="delete-player-modal-button" type="button">Eliminar jugador</button>
+          <button class="secondary-button" value="cancel" type="submit">Cancelar</button>
+          <button class="primary-button" id="save-player-button" value="default" type="submit">Guardar</button>
+        </div>
+      </form>
+    </dialog>
+
+    <dialog id="match-dialog" class="modal">
+      <form method="dialog" id="match-form" class="modal-card">
+        <div class="modal-header">
+          <h2 id="match-modal-title">Nuevo partido</h2>
+          <button class="icon-button" value="cancel" type="submit" aria-label="Cerrar">×</button>
+        </div>
+        <input type="hidden" id="match-id" />
+        <div class="form-grid">
+          <label>
+            Jornada
+            <input id="match-round" required type="number" min="1" />
+          </label>
+          <label>
+            Fecha
+            <input id="match-date" type="date" />
+          </label>
+        </div>
+        <div class="form-grid">
+          <label>
+            Local
+            <input id="match-home" required maxlength="60" />
+          </label>
+          <label>
+            Visitante
+            <input id="match-away" required maxlength="60" />
+          </label>
+        </div>
+        <div class="form-grid">
+          <label>
+            Estado
+            <select id="match-status">
+              <option>Preparación</option>
+              <option>Convocado</option>
+              <option>Jugado</option>
+            </select>
+          </label>
+          <label>
+            Resultado
+            <input id="match-score" maxlength="12" placeholder="0-0" />
+          </label>
+        </div>
+        <div class="modal-actions">
+          <button class="secondary-button" value="cancel" type="submit">Cancelar</button>
+          <button class="primary-button" id="save-match-button" value="default" type="submit">Guardar</button>
+        </div>
+      </form>
+    </dialog>
+
+    <script src="app.js?v=20260606-2"></script>
+  </body>
+</html>
