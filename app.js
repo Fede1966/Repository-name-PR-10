@@ -4,6 +4,26 @@ const SUPABASE_ANON_KEY =
   "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZobW55am1obm9icW14Z3Vsc2FnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA2NzEyNTMsImV4cCI6MjA5NjI0NzI1M30.Li4R65j3sGHSrIdt7tiubHNDgKrzjXDqcT92BCqZfDA";
 const PLAYER_PHOTOS_BUCKET = "player-photos";
 const TEAM_NAME = "Athletic Club";
+const DEFAULT_FORMATION = "1442";
+const FORMATION_STORAGE_KEY = "__formation";
+const FORMATIONS = {
+  "1442": {
+    label: "1-4-4-2",
+    slots: formationSlots([1, 4, 4, 2], [90, 72, 49, 24])
+  },
+  "1352": {
+    label: "1-3-5-2",
+    slots: formationSlots([1, 3, 5, 2], [90, 72, 49, 24])
+  },
+  "1433": {
+    label: "1-4-3-3",
+    slots: formationSlots([1, 4, 3, 3], [90, 72, 49, 24])
+  },
+  "14231": {
+    label: "1-4-2-3-1",
+    slots: formationSlots([1, 4, 2, 3, 1], [90, 72, 56, 38, 19])
+  }
+};
 
 const initialState = {
   players: [
@@ -118,6 +138,7 @@ matchForm.addEventListener("submit", (event) => {
     status: document.querySelector("#match-status").value,
     score: document.querySelector("#match-score").value.trim(),
     lineup: existing?.lineup || {},
+    formation: existing?.formation || DEFAULT_FORMATION,
     plan: existing?.plan || emptyPlan()
   };
 
@@ -147,6 +168,7 @@ function match(id, round, home, away, date, status, score) {
     status,
     score,
     lineup: defaultLineup(),
+    formation: DEFAULT_FORMATION,
     plan: emptyPlan()
   };
 }
@@ -154,16 +176,16 @@ function match(id, round, home, away, date, status, score) {
 function defaultLineup() {
   return {
     p1: { x: 50, y: 90 },
-    p4: { x: 28, y: 72 },
-    p2: { x: 50, y: 74 },
-    p15: { x: 72, y: 72 },
-    p5: { x: 18, y: 58 },
-    p7: { x: 40, y: 54 },
-    p8: { x: 60, y: 52 },
-    p12: { x: 82, y: 58 },
-    p9: { x: 25, y: 34 },
-    p11: { x: 50, y: 25 },
-    p10: { x: 75, y: 34 }
+    p5: { x: 14, y: 72 },
+    p4: { x: 38, y: 72 },
+    p2: { x: 62, y: 72 },
+    p15: { x: 86, y: 72 },
+    p9: { x: 14, y: 49 },
+    p7: { x: 38, y: 49 },
+    p8: { x: 62, y: 49 },
+    p12: { x: 86, y: 49 },
+    p11: { x: 22, y: 24 },
+    p10: { x: 78, y: 24 }
   };
 }
 
@@ -191,6 +213,7 @@ function loadState() {
       matches: saved.matches?.map((item) => ({
         ...item,
         lineup: item.lineup || {},
+        formation: item.formation || DEFAULT_FORMATION,
         plan: { ...emptyPlan(), ...(item.plan || {}) }
       })) || structuredClone(initialState.matches)
     };
@@ -240,7 +263,7 @@ async function pullRemoteState() {
     const lineups = settledValue(results[2], []);
     const plans = settledValue(results[3], []);
 
-    const lineupByMatch = Object.fromEntries(lineups.map((item) => [item.match_id, item.lineup || {}]));
+    const lineupByMatch = Object.fromEntries(lineups.map((item) => [item.match_id, parseRemoteLineup(item.lineup)]));
     const planByMatch = {};
     plans.forEach((item) => {
       planByMatch[item.match_id] = {
@@ -430,7 +453,7 @@ function toRemoteMatch(item) {
   };
 }
 
-function fromRemoteMatch(item, lineup, plan) {
+function fromRemoteMatch(item, lineupData, plan) {
   return {
     id: item.id,
     round: item.round,
@@ -439,7 +462,8 @@ function fromRemoteMatch(item, lineup, plan) {
     date: item.date || "",
     status: item.status,
     score: item.score || "",
-    lineup: lineup || {},
+    lineup: lineupData?.lineup || {},
+    formation: lineupData?.formation || DEFAULT_FORMATION,
     plan: plan || emptyPlan()
   };
 }
@@ -447,9 +471,19 @@ function fromRemoteMatch(item, lineup, plan) {
 function toRemoteLineup(item) {
   return {
     match_id: item.id,
-    lineup: item.lineup || {},
+    lineup: {
+      ...(item.lineup || {}),
+      [FORMATION_STORAGE_KEY]: item.formation || DEFAULT_FORMATION
+    },
     updated_at: new Date().toISOString()
   };
+}
+
+function parseRemoteLineup(value) {
+  const lineup = { ...(value || {}) };
+  const formation = FORMATIONS[lineup[FORMATION_STORAGE_KEY]] ? lineup[FORMATION_STORAGE_KEY] : DEFAULT_FORMATION;
+  delete lineup[FORMATION_STORAGE_KEY];
+  return { lineup, formation };
 }
 
 function toRemotePlan(item) {
@@ -661,12 +695,25 @@ function renderGameplanPage() {
 function renderLineup(item, body) {
   const lineupIds = new Set(Object.keys(item.lineup || {}));
   const bench = state.players.filter((playerItem) => !lineupIds.has(playerItem.id));
+  const selectedFormation = FORMATIONS[item.formation] ? item.formation : DEFAULT_FORMATION;
 
   body.innerHTML = `
     <div class="lineup-layout">
       <div class="panel">
-        <h2>Campo</h2>
-        <p class="meta">Arrastra jugadores desde suplentes o mueve las fichas ya colocadas.</p>
+        <div class="lineup-heading">
+          <div>
+            <h2>Campo</h2>
+            <p class="meta">Elige un sistema y ajusta las posiciones arrastrando las fichas.</p>
+          </div>
+          <label class="formation-control">
+            Sistema
+            <select id="formation-selector">
+              ${Object.entries(FORMATIONS)
+                .map(([value, formation]) => `<option value="${value}" ${selectedFormation === value ? "selected" : ""}>${formation.label}</option>`)
+                .join("")}
+            </select>
+          </label>
+        </div>
         <div class="pitch" id="pitch">
           <div class="goal goal-top"></div>
           <div class="goal goal-bottom"></div>
@@ -691,6 +738,12 @@ function renderLineup(item, body) {
       </aside>
     </div>
   `;
+
+  body.querySelector("#formation-selector").addEventListener("change", (event) => {
+    applyFormation(item, event.target.value);
+    saveState();
+    render();
+  });
 
   const pitch = body.querySelector("#pitch");
   pitch.addEventListener("dragover", (event) => event.preventDefault());
@@ -970,21 +1023,36 @@ function encodeStoragePath(path) {
 }
 
 function nextLineupSlot(item) {
-  const slots = [
-    { x: 50, y: 88 },
-    { x: 25, y: 70 },
-    { x: 50, y: 72 },
-    { x: 75, y: 70 },
-    { x: 28, y: 52 },
-    { x: 50, y: 50 },
-    { x: 72, y: 52 },
-    { x: 25, y: 32 },
-    { x: 50, y: 26 },
-    { x: 75, y: 32 },
-    { x: 50, y: 15 }
-  ];
+  const slots = FORMATIONS[item.formation]?.slots || FORMATIONS[DEFAULT_FORMATION].slots;
   const used = Object.keys(item.lineup || {}).length;
   return slots[used % slots.length];
+}
+
+function formationSlots(lines, yPositions) {
+  return lines.flatMap((count, lineIndex) => {
+    if (count === 1) return [{ x: 50, y: yPositions[lineIndex] }];
+    const sideMargin = count >= 5 ? 10 : count === 4 ? 14 : 22;
+    const step = (100 - sideMargin * 2) / (count - 1);
+    return Array.from({ length: count }, (_, index) => ({
+      x: sideMargin + step * index,
+      y: yPositions[lineIndex]
+    }));
+  });
+}
+
+function applyFormation(item, formationId) {
+  const formation = FORMATIONS[formationId];
+  if (!formation) return;
+
+  const playerIds = Object.entries(item.lineup || {})
+    .sort(([, first], [, second]) => second.y - first.y || first.x - second.x)
+    .map(([playerId]) => playerId)
+    .slice(0, formation.slots.length);
+
+  item.formation = formationId;
+  playerIds.forEach((playerId, index) => {
+    item.lineup[playerId] = { ...formation.slots[index] };
+  });
 }
 
 function initials(name) {

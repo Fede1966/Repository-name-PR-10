@@ -373,6 +373,43 @@ button {
   gap: 16px;
 }
 
+.lineup-heading {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 12px;
+}
+
+.lineup-heading h2,
+.lineup-heading p {
+  margin-top: 0;
+}
+
+.lineup-heading p {
+  margin-bottom: 0;
+}
+
+.formation-control {
+  display: grid;
+  gap: 5px;
+  min-width: 150px;
+  font-size: 0.76rem;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.formation-control select {
+  min-height: 42px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+  color: var(--ink);
+  padding: 8px 32px 8px 10px;
+  font: inherit;
+  font-size: 0.9rem;
+}
+
 .pitch {
   position: relative;
   aspect-ratio: 68 / 96;
@@ -708,9 +745,14 @@ button:focus-visible {
   }
 
   .toolbar,
-  .detail-header {
+  .detail-header,
+  .lineup-heading {
     align-items: stretch;
     flex-direction: column;
+  }
+
+  .formation-control {
+    width: 100%;
   }
 
   .pitch {
