@@ -751,8 +751,10 @@ function renderLineup(item, body) {
     event.preventDefault();
     if (!draggedPlayerId) return;
     const rect = pitch.getBoundingClientRect();
-    const x = clamp(((event.clientX - rect.left) / rect.width) * 100, 7, 93);
-    const y = clamp(((event.clientY - rect.top) / rect.height) * 100, 5, 95);
+    const displayX = clamp(((event.clientX - rect.left) / rect.width) * 100, 5, 95);
+    const displayY = clamp(((event.clientY - rect.top) / rect.height) * 100, 7, 93);
+    const x = displayY;
+    const y = 100 - displayX;
     item.lineup[draggedPlayerId] = { x, y };
     draggedPlayerId = null;
     saveState();
@@ -785,8 +787,10 @@ function renderLineup(item, body) {
 function renderLineupToken(playerId, position) {
   const item = state.players.find((playerItem) => playerItem.id === playerId);
   if (!item) return "";
+  const displayX = 100 - position.y;
+  const displayY = position.x;
   return `
-    <div class="lineup-token" draggable="true" data-player-id="${item.id}" style="left:${position.x}%;top:${position.y}%">
+    <div class="lineup-token" draggable="true" data-player-id="${item.id}" style="left:${displayX}%;top:${displayY}%">
       <span>${item.number}</span>
       <small>${escapeHtml(shortName(item.name))}</small>
       <button class="icon-button token-remove" data-remove-lineup="${item.id}" type="button" aria-label="Quitar de alineación">×</button>
