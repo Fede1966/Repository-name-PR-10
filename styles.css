@@ -530,19 +530,21 @@ button {
 }
 
 .penalty-arc {
-  width: 7%;
-  height: 22%;
+  width: 14%;
+  height: 27%;
   border-radius: 50%;
 }
 
 .penalty-arc-top {
   left: 10%;
-  border-left-color: transparent;
+  transform: translate(-50%, -50%);
+  clip-path: inset(0 0 0 71%);
 }
 
 .penalty-arc-bottom {
-  right: 10%;
-  border-right-color: transparent;
+  left: 90%;
+  transform: translate(-50%, -50%);
+  clip-path: inset(0 71% 0 0);
 }
 
 .lineup-token {
