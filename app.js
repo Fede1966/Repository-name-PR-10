@@ -651,15 +651,16 @@ function renderPlayerDetail() {
         <button class="secondary-button" data-edit-player="${item.id}" type="button">Editar jugador</button>
       </div>
     </div>
-    <section class="player-profile-card">
+    <section class="player-profile-card player-profile-hero">
+      <div class="player-number-watermark">${item.number}</div>
       <div class="player-profile-photo" ${photoStyle}>${item.photo ? "" : initials(item.name)}</div>
       <div class="player-profile-main">
         <div class="player-profile-title">
           <div>
-            <p class="eyebrow">Dorsal ${item.number}</p>
+            <p class="player-position-label">${escapeHtml(item.position)}</p>
             <h2>${escapeHtml(item.name)}</h2>
+            <p class="player-full-name">Dorsal ${item.number} · ${escapeHtml(item.laterality || "Diestro")}</p>
           </div>
-          <span class="tag">${escapeHtml(item.position)}</span>
         </div>
         <div class="player-info-grid">
           ${renderPlayerInfo("Nombre completo", item.name)}
@@ -667,7 +668,7 @@ function renderPlayerDetail() {
           ${renderPlayerInfo("Edad", `${calculateAge(item.birthdate)} años`)}
           ${renderPlayerInfo("Lateralidad", item.laterality || "Diestro")}
           ${renderPlayerInfo("Posición", item.position)}
-          ${renderPlayerInfo("Dorsal", item.number)}
+          ${renderPlayerInfo("Partidos registrados", state.matches.length)}
         </div>
         <label class="profile-description">
           Descripción del jugador
@@ -735,25 +736,30 @@ function renderPlayerStatistics(item, body) {
     .sort((a, b) => b.round - a.round)[0];
 
   body.innerHTML = `
-    <section class="panel player-tab-page">
-      <div class="section-intro">
+    <section class="player-tab-page player-statistics-page">
+      <div class="player-statistics-toolbar">
         <div>
           <h2>Estadísticas del jugador</h2>
-          <p class="meta">Datos calculados a partir de las alineaciones guardadas.</p>
+          <p class="meta">Totales acumulados desde sus informes de partido.</p>
+        </div>
+        <div class="statistics-filters">
+          <span class="filter-chip">Temporada 2026</span>
+          <span class="filter-chip">Todas las competiciones</span>
         </div>
       </div>
-      <div class="metrics-grid player-metrics-grid">
-        ${renderMetric("Alineaciones", appearances.length)}
-        ${renderMetric("Partidos jugados", playedAppearances.length)}
-        ${renderMetric("Minutos jugados", totals.minutes)}
-        ${renderMetric("Goles", totals.goals)}
-        ${renderMetric("Asistencias de gol", totals.assists)}
-        ${renderMetric("Tiros a puerta", totals.shotsOnTarget)}
-        ${renderMetric("Pases de gol", totals.goalPasses)}
-        ${renderMetric("Pases correctos", totals.completedPasses)}
-        ${renderMetric("Pases fallados", totals.failedPasses)}
-        ${renderMetric("Pérdidas", totals.losses)}
-        ${renderMetric("Recuperaciones", totals.recoveries)}
+      <div class="player-stat-cards">
+        ${renderFeaturedPlayerStat(playedAppearances.length, totals.minutes, appearances.length)}
+        ${renderPlayerStatCard("Goles marcados", totals.goals, "GO")}
+        ${renderPlayerStatCard("Asistencias de gol", totals.assists, "AS")}
+        ${renderPlayerStatCard("Tiros a puerta", totals.shotsOnTarget, "TP")}
+        ${renderPlayerStatCard("Pases", totals.completedPasses + totals.failedPasses, "PA", [
+          `${totals.completedPasses} correctos`,
+          `${totals.failedPasses} fallados`
+        ])}
+        ${renderPlayerStatCard("Pases de gol", totals.goalPasses, "PG")}
+        ${renderPlayerStatCard("Recuperaciones", totals.recoveries, "RE", [
+          `${totals.losses} pérdidas`
+        ])}
       </div>
       <div class="player-stat-summary">
         <div>
@@ -770,6 +776,35 @@ function renderPlayerStatistics(item, body) {
         </div>
       </div>
     </section>
+  `;
+}
+
+function renderFeaturedPlayerStat(matches, minutes, lineups) {
+  return `
+    <article class="player-stat-card featured">
+      <div class="player-stat-card-title"><span>PO</span> Partidos oficiales</div>
+      <div class="featured-stat-content">
+        <strong>${matches}</strong>
+        <div>
+          <span>${minutes.toLocaleString("es-ES")} min. jugados</span>
+          <span>${lineups} alineaciones</span>
+        </div>
+      </div>
+    </article>
+  `;
+}
+
+function renderPlayerStatCard(title, value, icon, details = []) {
+  return `
+    <article class="player-stat-card">
+      <div class="player-stat-card-title"><span>${icon}</span> ${escapeHtml(title)}</div>
+      <strong>${value.toLocaleString("es-ES")}</strong>
+      ${
+        details.length
+          ? `<div class="player-stat-card-details">${details.map((detail) => `<span>${escapeHtml(detail)}</span>`).join("")}</div>`
+          : ""
+      }
+    </article>
   `;
 }
 
