@@ -1700,7 +1700,14 @@ function youtubeEmbedUrl(value) {
   }
 }
 
-function downloadPlayerPdf(item) {
+async function downloadPlayerPdf(item) {
+  const popup = window.open("", "_blank", "width=900,height=700");
+  if (!popup) {
+    alert("El navegador ha bloqueado la ventana del PDF. Permite ventanas emergentes y vuelve a intentarlo.");
+    return;
+  }
+  popup.document.write("<p style=\"font:16px Arial;padding:24px\">Preparando la ficha y cargando la fotografía...</p>");
+
   const appearances = state.matches.filter((matchItem) => matchItem.lineup?.[item.id]);
   const totals = playerReportTotals(item);
   const reports = state.matches
@@ -1708,12 +1715,9 @@ function downloadPlayerPdf(item) {
     .sort((a, b) => a.round - b.round)
     .map((matchItem) => ({ match: matchItem, report: playerReport(item, matchItem.id) }))
     .filter(({ report }) => playerReportHasData(report));
-  const popup = window.open("", "_blank", "width=900,height=700");
-  if (!popup) {
-    alert("El navegador ha bloqueado la ventana del PDF. Permite ventanas emergentes y vuelve a intentarlo.");
-    return;
-  }
+  const printablePhoto = await imageToDataUrl(item.photo);
 
+  popup.document.open();
   popup.document.write(`
     <!doctype html>
     <html lang="es">
@@ -1725,7 +1729,8 @@ function downloadPlayerPdf(item) {
           * { box-sizing: border-box; }
           body { margin: 0; color: #20242a; font: 12px Arial, sans-serif; }
           header { display: grid; grid-template-columns: 120px 1fr; gap: 20px; padding-bottom: 18px; border-bottom: 3px solid #b7192b; }
-          .photo { width: 120px; height: 150px; display: grid; place-items: center; color: white; background: #b7192b center/cover; font-size: 30px; font-weight: bold; }
+          .photo { width: 120px; height: 150px; display: grid; place-items: center; overflow: hidden; color: white; background: #b7192b; font-size: 30px; font-weight: bold; }
+          .photo img { width: 100%; height: 100%; display: block; object-fit: cover; object-position: center; }
           h1 { margin: 0 0 5px; font-size: 27px; }
           h2 { margin: 22px 0 10px; color: #861424; font-size: 17px; }
           .meta { color: #6a717c; }
@@ -1753,7 +1758,7 @@ function downloadPlayerPdf(item) {
       </head>
       <body>
         <header>
-          <div class="photo" ${item.photo ? `style="background-image:url('${escapeAttr(item.photo)}')"` : ""}>${item.photo ? "" : initials(item.name)}</div>
+          <div class="photo">${printablePhoto ? `<img src="${escapeAttr(printablePhoto)}" alt="Foto de ${escapeAttr(item.name)}" />` : initials(item.name)}</div>
           <div>
             <div class="meta">ATHLETIC CLUB · FICHA TÉCNICA</div>
             <h1>${escapeHtml(item.name)}</h1>
@@ -1814,11 +1819,34 @@ function downloadPlayerPdf(item) {
                 .join("")
             : "<p>Sin informes registrados.</p>"
         }
-        <script>window.addEventListener("load", () => setTimeout(() => window.print(), 300));<\/script>
+        <script>
+          window.addEventListener("load", async () => {
+            const images = Array.from(document.images);
+            await Promise.all(images.map((image) => image.complete ? Promise.resolve() : new Promise((resolve) => {
+              image.addEventListener("load", resolve, { once: true });
+              image.addEventListener("error", resolve, { once: true });
+            })));
+            setTimeout(() => window.print(), 250);
+          });
+        <\/script>
       </body>
     </html>
   `);
   popup.document.close();
+}
+
+async function imageToDataUrl(value) {
+  if (!value) return "";
+  if (value.startsWith("data:")) return value;
+  try {
+    const response = await fetch(value, { cache: "force-cache" });
+    if (!response.ok) throw new Error(`No se pudo cargar la foto: ${response.status}`);
+    const blob = await response.blob();
+    return await readFileAsDataUrl(blob);
+  } catch (error) {
+    console.error(error);
+    return value;
+  }
 }
 
 function renderPdfInfo(label, value) {
