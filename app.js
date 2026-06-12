@@ -338,7 +338,7 @@ function settledValue(result, fallback) {
   return fallback;
 }
 
-async function pushRemoteState() {
+async function pushRemoteState(throwOnError = false) {
   if (!hasSupabaseConfig()) return;
   try {
     await supabaseUpsert("players", state.players.map(toRemotePlayer), "id");
@@ -347,6 +347,7 @@ async function pushRemoteState() {
     await supabaseUpsert("game_plans", state.matches.map(toRemotePlan), "match_id");
   } catch (error) {
     console.error(error);
+    if (throwOnError) throw error;
   }
 }
 
@@ -857,6 +858,10 @@ function renderPlayerReports(item, body) {
                             ? `<p class="video-url-error">El enlace no parece ser un vídeo válido de YouTube.</p>`
                             : ""
                       }
+                      <div class="report-save-row">
+                        <span class="report-save-status" data-report-save-status="${matchItem.id}">Cambios guardados automáticamente</span>
+                        <button class="primary-button" data-save-player-report="${matchItem.id}" type="button">Guardar informe</button>
+                      </div>
                     </article>
                   `;
                 })
@@ -872,6 +877,7 @@ function renderPlayerReports(item, body) {
       const report = ensurePlayerReport(item, textarea.dataset.playerReportText);
       report.text = textarea.value;
       saveState();
+      markPlayerReportPending(body, textarea.dataset.playerReportText);
     });
   });
   body.querySelectorAll("[data-player-report-stat]").forEach((input) => {
@@ -881,6 +887,7 @@ function renderPlayerReports(item, body) {
       const maximum = key === "minutes" ? 130 : 9999;
       report[key] = clamp(Math.round(Number(input.value) || 0), 0, maximum);
       saveState();
+      markPlayerReportPending(body, input.dataset.playerReportStat);
     });
   });
   body.querySelectorAll("[data-player-report-youtube]").forEach((input) => {
@@ -888,9 +895,42 @@ function renderPlayerReports(item, body) {
       const report = ensurePlayerReport(item, input.dataset.playerReportYoutube);
       report.youtube = input.value.trim();
       saveState();
+      markPlayerReportPending(body, input.dataset.playerReportYoutube);
     });
     input.addEventListener("change", render);
   });
+  body.querySelectorAll("[data-save-player-report]").forEach((button) => {
+    button.addEventListener("click", async () => {
+      const matchId = button.dataset.savePlayerReport;
+      const status = body.querySelector(`[data-report-save-status="${matchId}"]`);
+      button.disabled = true;
+      button.textContent = "Guardando...";
+      status.textContent = "Guardando informe...";
+      status.classList.remove("pending", "saved", "error");
+      saveState();
+      clearTimeout(remoteSaveTimer);
+      try {
+        await pushRemoteState(true);
+        status.textContent = "Informe guardado";
+        status.classList.add("saved");
+      } catch (error) {
+        console.error(error);
+        status.textContent = "Guardado en este dispositivo; pendiente de sincronizar";
+        status.classList.add("error");
+      } finally {
+        button.disabled = false;
+        button.textContent = "Guardar informe";
+      }
+    });
+  });
+}
+
+function markPlayerReportPending(body, matchId) {
+  const status = body.querySelector(`[data-report-save-status="${matchId}"]`);
+  if (!status) return;
+  status.textContent = "Cambios pendientes de confirmar";
+  status.classList.remove("saved", "error");
+  status.classList.add("pending");
 }
 
 function renderReportStatInput(matchId, key, label, value, max = 9999) {

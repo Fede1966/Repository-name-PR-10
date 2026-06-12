@@ -508,6 +508,40 @@ button {
   font-weight: 750;
 }
 
+.report-save-row {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 14px;
+  margin-top: 16px;
+  padding-top: 14px;
+  border-top: 1px solid var(--line);
+}
+
+.report-save-status {
+  margin-right: auto;
+  color: var(--muted);
+  font-size: .78rem;
+  font-weight: 750;
+}
+
+.report-save-status.pending {
+  color: #8a6200;
+}
+
+.report-save-status.saved {
+  color: var(--green);
+}
+
+.report-save-status.error {
+  color: var(--red-dark);
+}
+
+.report-save-row button:disabled {
+  cursor: wait;
+  opacity: .7;
+}
+
 .player-main {
   display: grid;
   grid-template-columns: 50px 1fr;
@@ -1544,6 +1578,15 @@ button:focus-visible {
 
   .player-profile-card {
     grid-template-columns: 1fr;
+  }
+
+  .report-save-row {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .report-save-status {
+    margin-right: 0;
   }
 
   .player-profile-photo {
