@@ -7,10 +7,12 @@ create table if not exists public.players (
   laterality text not null default 'Diestro',
   photo text default '',
   photo_path text default '',
+  profile_data jsonb not null default '{}'::jsonb,
   updated_at timestamptz not null default now()
 );
 
 alter table public.players add column if not exists photo_path text default '';
+alter table public.players add column if not exists profile_data jsonb not null default '{}'::jsonb;
 
 create table if not exists public.matches (
   id text primary key,

@@ -48,20 +48,24 @@ const initialState = {
     match("m2", 2, "Betis", TEAM_NAME, "", "Preparación", "")
   ],
   selectedMatchId: "m1",
+  selectedPlayerId: "p1",
   activeView: "squad",
-  activeDetailTab: "lineup"
+  activeDetailTab: "lineup",
+  activePlayerTab: "statistics"
 };
 
 let state = loadState();
 let draggedPlayerId = null;
 let remoteSaveTimer = null;
 let isPullingRemote = false;
+let supportsRemotePlayerProfiles = false;
 
 const views = {
   squad: document.querySelector("#squad-view"),
   matches: document.querySelector("#matches-view"),
   standings: document.querySelector("#standings-view"),
   statistics: document.querySelector("#statistics-view"),
+  playerDetail: document.querySelector("#player-detail-view"),
   detail: document.querySelector("#match-detail-view")
 };
 
@@ -113,7 +117,10 @@ playerForm.addEventListener("submit", async (event) => {
     position: document.querySelector("#player-position").value,
     laterality: document.querySelector("#player-laterality").value,
     photo: uploadedPhoto?.url || playerPhotoInput.value,
-    photoPath: uploadedPhoto?.path || currentPlayer?.photoPath || ""
+    photoPath: uploadedPhoto?.path || currentPlayer?.photoPath || "",
+    description: currentPlayer?.description || "",
+    career: currentPlayer?.career || "",
+    reports: currentPlayer?.reports || {}
   };
 
   const index = state.players.findIndex((item) => item.id === formPlayer.id);
@@ -155,7 +162,19 @@ render();
 initializeSupabase();
 
 function player(id, name, number, birthdate, position, laterality = "Diestro") {
-  return { id, name, number, birthdate, position, laterality, photo: "", photoPath: "" };
+  return {
+    id,
+    name,
+    number,
+    birthdate,
+    position,
+    laterality,
+    photo: "",
+    photoPath: "",
+    description: "",
+    career: "",
+    reports: {}
+  };
 }
 
 function match(id, round, home, away, date, status, score) {
@@ -210,7 +229,10 @@ function loadState() {
       players: saved.players?.map((item) => ({
         ...item,
         laterality: item.laterality || "Diestro",
-        photoPath: item.photoPath || item.photo_path || ""
+        photoPath: item.photoPath || item.photo_path || "",
+        description: item.description || "",
+        career: item.career || "",
+        reports: item.reports || {}
       })) || structuredClone(initialState.players),
       matches: saved.matches?.map((item) => ({
         ...item,
@@ -264,6 +286,7 @@ async function pullRemoteState() {
     const matches = settledValue(results[1], []);
     const lineups = settledValue(results[2], []);
     const plans = settledValue(results[3], []);
+    supportsRemotePlayerProfiles = players.some((item) => Object.hasOwn(item, "profile_data"));
 
     const lineupByMatch = Object.fromEntries(lineups.map((item) => [item.match_id, parseRemoteLineup(item.lineup)]));
     const planByMatch = {};
@@ -278,7 +301,10 @@ async function pullRemoteState() {
 
     const hasRemotePlayers = players.length > 0;
     const hasRemoteMatches = matches.length > 0;
-    if (hasRemotePlayers) state.players = players.map(fromRemotePlayer);
+    if (hasRemotePlayers) {
+      const localPlayers = new Map(state.players.map((item) => [item.id, item]));
+      state.players = players.map((item) => fromRemotePlayer(item, localPlayers.get(item.id)));
+    }
     if (hasRemoteMatches) {
       state.matches = matches.map((item) => fromRemoteMatch(item, lineupByMatch[item.id], planByMatch[item.id]));
     } else if (!state.matches.length) {
@@ -425,11 +451,21 @@ function toRemotePlayer(item) {
     laterality: item.laterality || "Diestro",
     photo: item.photo || "",
     photo_path: item.photoPath || "",
+    ...(supportsRemotePlayerProfiles
+      ? {
+          profile_data: {
+            description: item.description || "",
+            career: item.career || "",
+            reports: item.reports || {}
+          }
+        }
+      : {}),
     updated_at: new Date().toISOString()
   };
 }
 
-function fromRemotePlayer(item) {
+function fromRemotePlayer(item, localItem = {}) {
+  const remoteProfile = item.profile_data || {};
   return {
     id: item.id,
     name: item.name,
@@ -438,7 +474,10 @@ function fromRemotePlayer(item) {
     position: item.position,
     laterality: item.laterality || "Diestro",
     photo: item.photo || "",
-    photoPath: item.photo_path || ""
+    photoPath: item.photo_path || "",
+    description: remoteProfile.description || localItem.description || "",
+    career: remoteProfile.career || localItem.career || "",
+    reports: { ...(localItem.reports || {}), ...(remoteProfile.reports || {}) }
   };
 }
 
@@ -512,21 +551,25 @@ function render() {
 
   Object.values(views).forEach((view) => view.classList.remove("active"));
   if (state.activeView === "detail") views.detail.classList.add("active");
+  else if (state.activeView === "playerDetail") views.playerDetail.classList.add("active");
   else views[state.activeView].classList.add("active");
 
   contextActionButton.textContent = state.activeView === "matches" ? "Añadir partido" : "Añadir jugador";
-  contextActionButton.style.display = ["detail", "standings", "statistics"].includes(state.activeView) ? "none" : "inline-flex";
+  contextActionButton.style.display = ["detail", "playerDetail", "standings", "statistics"].includes(state.activeView) ? "none" : "inline-flex";
   pageTitle.textContent = pageTitleForView(state.activeView);
 
   renderSquad();
   renderMatches();
   renderStandings();
   renderStatistics();
+  renderPlayerDetail();
   renderMatchDetail();
 }
 
 function normalizedMainView() {
-  return state.activeView === "detail" ? "matches" : state.activeView;
+  if (state.activeView === "detail") return "matches";
+  if (state.activeView === "playerDetail") return "squad";
+  return state.activeView;
 }
 
 function pageTitleForView(view) {
@@ -535,6 +578,7 @@ function pageTitleForView(view) {
     matches: "Partidos",
     standings: "Clasificación",
     statistics: "Estadísticas",
+    playerDetail: "Ficha del jugador",
     detail: "Detalle de partido"
   };
   return titles[view] || "Plantilla";
@@ -554,6 +598,13 @@ function renderSquad() {
   views.squad.querySelectorAll("[data-edit-player]").forEach((button) => {
     button.addEventListener("click", () => openPlayerDialog(button.dataset.editPlayer));
   });
+  views.squad.querySelectorAll("[data-open-player]").forEach((button) => {
+    button.addEventListener("click", () => {
+      state.selectedPlayerId = button.dataset.openPlayer;
+      state.activePlayerTab = "statistics";
+      setView("playerDetail");
+    });
+  });
 }
 
 function renderPlayerCard(item) {
@@ -570,9 +621,204 @@ function renderPlayerCard(item) {
         </div>
       </div>
       <div class="row-actions">
+        <button class="primary-button" data-open-player="${item.id}" type="button">Ver ficha</button>
         <button class="secondary-button" data-edit-player="${item.id}" type="button">Editar</button>
       </div>
     </article>
+  `;
+}
+
+function renderPlayerDetail() {
+  const item = state.players.find((playerItem) => playerItem.id === state.selectedPlayerId) || state.players[0];
+  if (!item) {
+    views.playerDetail.innerHTML = `<div class="empty-state">Todavía no hay jugadores en la plantilla.</div>`;
+    return;
+  }
+  state.selectedPlayerId = item.id;
+  const photoStyle = item.photo ? `style="background-image:url('${escapeAttr(item.photo)}')"` : "";
+
+  views.playerDetail.innerHTML = `
+    <div class="player-profile-header">
+      <button class="secondary-button" id="back-to-squad" type="button">Volver a plantilla</button>
+      <button class="secondary-button" data-edit-player="${item.id}" type="button">Editar jugador</button>
+    </div>
+    <section class="player-profile-card">
+      <div class="player-profile-photo" ${photoStyle}>${item.photo ? "" : initials(item.name)}</div>
+      <div class="player-profile-main">
+        <div class="player-profile-title">
+          <div>
+            <p class="eyebrow">Dorsal ${item.number}</p>
+            <h2>${escapeHtml(item.name)}</h2>
+          </div>
+          <span class="tag">${escapeHtml(item.position)}</span>
+        </div>
+        <div class="player-info-grid">
+          ${renderPlayerInfo("Nombre completo", item.name)}
+          ${renderPlayerInfo("Fecha de nacimiento", formatDate(item.birthdate))}
+          ${renderPlayerInfo("Edad", `${calculateAge(item.birthdate)} años`)}
+          ${renderPlayerInfo("Lateralidad", item.laterality || "Diestro")}
+          ${renderPlayerInfo("Posición", item.position)}
+          ${renderPlayerInfo("Dorsal", item.number)}
+        </div>
+        <label class="profile-description">
+          Descripción del jugador
+          <textarea id="player-description" maxlength="2000" placeholder="Describe sus características técnicas, físicas, tácticas y personales...">${escapeHtml(item.description || "")}</textarea>
+        </label>
+      </div>
+    </section>
+    <div class="detail-tabs player-detail-tabs">
+      <button class="detail-tab ${state.activePlayerTab === "statistics" ? "active" : ""}" data-player-tab="statistics" type="button">Estadísticas</button>
+      <button class="detail-tab ${state.activePlayerTab === "career" ? "active" : ""}" data-player-tab="career" type="button">Trayectoria</button>
+      <button class="detail-tab ${state.activePlayerTab === "reports" ? "active" : ""}" data-player-tab="reports" type="button">Informes de cada partido</button>
+    </div>
+    <div id="player-tab-body"></div>
+  `;
+
+  views.playerDetail.querySelector("#back-to-squad").addEventListener("click", () => setView("squad"));
+  views.playerDetail.querySelector("[data-edit-player]").addEventListener("click", () => openPlayerDialog(item.id));
+  views.playerDetail.querySelector("#player-description").addEventListener("input", (event) => {
+    item.description = event.target.value;
+    saveState();
+  });
+  views.playerDetail.querySelectorAll("[data-player-tab]").forEach((button) => {
+    button.addEventListener("click", () => {
+      state.activePlayerTab = button.dataset.playerTab;
+      saveState();
+      render();
+    });
+  });
+
+  const body = views.playerDetail.querySelector("#player-tab-body");
+  if (state.activePlayerTab === "career") renderPlayerCareer(item, body);
+  else if (state.activePlayerTab === "reports") renderPlayerReports(item, body);
+  else renderPlayerStatistics(item, body);
+}
+
+function renderPlayerStatistics(item, body) {
+  const appearances = state.matches.filter((matchItem) => matchItem.lineup?.[item.id]);
+  const playedAppearances = appearances.filter((matchItem) => Boolean(parseScore(matchItem.score)));
+  const selectedMatches = state.matches.length;
+  const participation = selectedMatches ? Math.round((appearances.length / selectedMatches) * 100) : 0;
+  const latestAppearance = appearances
+    .slice()
+    .sort((a, b) => b.round - a.round)[0];
+
+  body.innerHTML = `
+    <section class="panel player-tab-page">
+      <div class="section-intro">
+        <div>
+          <h2>Estadísticas del jugador</h2>
+          <p class="meta">Datos calculados a partir de las alineaciones guardadas.</p>
+        </div>
+      </div>
+      <div class="metrics-grid player-metrics-grid">
+        ${renderMetric("Alineaciones", appearances.length)}
+        ${renderMetric("Partidos jugados", playedAppearances.length)}
+        ${renderMetric("Participación", `${participation}%`)}
+        ${renderMetric("Dorsal", item.number)}
+      </div>
+      <div class="player-stat-summary">
+        <div>
+          <span>Última aparición</span>
+          <strong>${latestAppearance ? `Jornada ${latestAppearance.round}` : "Sin apariciones"}</strong>
+        </div>
+        <div>
+          <span>Posición principal</span>
+          <strong>${escapeHtml(item.position)}</strong>
+        </div>
+        <div>
+          <span>Lateralidad</span>
+          <strong>${escapeHtml(item.laterality || "Diestro")}</strong>
+        </div>
+      </div>
+    </section>
+  `;
+}
+
+function renderPlayerCareer(item, body) {
+  body.innerHTML = `
+    <section class="panel player-tab-page">
+      <div class="section-intro">
+        <div>
+          <h2>Trayectoria</h2>
+          <p class="meta">Clubes, temporadas, categorías y evolución deportiva.</p>
+        </div>
+      </div>
+      <div class="current-club-card">
+        <div class="crest small-crest">AC</div>
+        <div>
+          <strong>${TEAM_NAME}</strong>
+          <div class="meta">Temporada 2026 · ${escapeHtml(item.position)}</div>
+        </div>
+      </div>
+      <label class="career-editor">
+        Historial del jugador
+        <textarea id="player-career" maxlength="5000" placeholder="Ejemplo: 2024-2026 Athletic Club · Primer equipo&#10;2022-2024 Bilbao Athletic...">${escapeHtml(item.career || "")}</textarea>
+      </label>
+    </section>
+  `;
+
+  body.querySelector("#player-career").addEventListener("input", (event) => {
+    item.career = event.target.value;
+    saveState();
+  });
+}
+
+function renderPlayerReports(item, body) {
+  const matches = state.matches.slice().sort((a, b) => a.round - b.round);
+  body.innerHTML = `
+    <section class="panel player-tab-page">
+      <div class="section-intro">
+        <div>
+          <h2>Informes de cada partido</h2>
+          <p class="meta">Valoración técnica individual para cada jornada.</p>
+        </div>
+      </div>
+      <div class="player-reports-list">
+        ${
+          matches.length
+            ? matches
+                .map((matchItem) => {
+                  const inLineup = Boolean(matchItem.lineup?.[item.id]);
+                  return `
+                    <article class="player-report-card">
+                      <div class="player-report-heading">
+                        <div>
+                          <span class="tag">Jornada ${matchItem.round}</span>
+                          <h3>${escapeHtml(matchItem.home)} vs ${escapeHtml(matchItem.away)}</h3>
+                          <p class="meta">${matchItem.date ? formatDate(matchItem.date) : "Fecha pendiente"} · ${escapeHtml(matchItem.score || "Sin resultado")}</p>
+                        </div>
+                        <span class="report-status ${inLineup ? "included" : ""}">${inLineup ? "En alineación" : "No alineado"}</span>
+                      </div>
+                      <label>
+                        Informe individual
+                        <textarea data-player-report="${matchItem.id}" maxlength="3000" placeholder="Rendimiento, aspectos destacados y puntos de mejora...">${escapeHtml(item.reports?.[matchItem.id] || "")}</textarea>
+                      </label>
+                    </article>
+                  `;
+                })
+                .join("")
+            : `<div class="empty-state">Crea partidos para añadir informes individuales.</div>`
+        }
+      </div>
+    </section>
+  `;
+
+  body.querySelectorAll("[data-player-report]").forEach((textarea) => {
+    textarea.addEventListener("input", () => {
+      item.reports ||= {};
+      item.reports[textarea.dataset.playerReport] = textarea.value;
+      saveState();
+    });
+  });
+}
+
+function renderPlayerInfo(label, value) {
+  return `
+    <div class="player-info-item">
+      <span>${escapeHtml(label)}</span>
+      <strong>${escapeHtml(value)}</strong>
+    </div>
   `;
 }
 
@@ -1271,6 +1517,18 @@ function formatDate(value) {
     month: "2-digit",
     year: "numeric"
   }).format(new Date(`${value}T00:00:00`));
+}
+
+function calculateAge(value) {
+  if (!value) return 0;
+  const birthdate = new Date(`${value}T00:00:00`);
+  const today = new Date();
+  let age = today.getFullYear() - birthdate.getFullYear();
+  const birthdayPending =
+    today.getMonth() < birthdate.getMonth() ||
+    (today.getMonth() === birthdate.getMonth() && today.getDate() < birthdate.getDate());
+  if (birthdayPending) age -= 1;
+  return age;
 }
 
 function clamp(value, min, max) {
