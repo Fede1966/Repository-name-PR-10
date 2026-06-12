@@ -996,37 +996,80 @@ button {
 
 .team-summary-strip {
   display: grid;
-  grid-template-columns: repeat(5, minmax(150px, 1fr));
-  gap: 10px;
-  margin-bottom: 24px;
+  grid-template-columns: 2.05fr repeat(4, minmax(180px, 1fr));
+  gap: 16px;
+  margin-bottom: 32px;
 }
 
 .team-summary-card {
-  min-height: 104px;
-  padding: 14px;
-  border-radius: 6px;
-  background: #f2f2f2;
+  display: flex;
+  min-height: 158px;
+  padding: 18px 20px;
+  flex-direction: column;
+  border-radius: 12px;
+  background: #f4f4f4;
 }
 
-.team-summary-card > span {
-  display: block;
-  color: #4d5259;
-  font-size: .72rem;
+.team-summary-title {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  color: #24272b;
+  font-size: .92rem;
   font-weight: 800;
   text-transform: uppercase;
 }
 
-.team-summary-card strong {
-  display: block;
-  margin: 7px 0 3px;
-  color: #17191c;
-  font-size: 2rem;
-  line-height: 1;
+.team-summary-icon {
+  color: #c4c7ca;
+  font-size: 1.15rem;
+  font-weight: 400;
 }
 
-.team-summary-card small {
-  color: var(--muted);
-  font-size: .7rem;
+.team-summary-content {
+  display: flex;
+  align-items: end;
+  min-height: 84px;
+  margin-top: auto;
+}
+
+.team-summary-card.featured .team-summary-content {
+  justify-content: space-between;
+  gap: 24px;
+}
+
+.team-summary-total {
+  color: #17191c;
+  font-size: 3.55rem;
+  font-weight: 400;
+  line-height: .9;
+}
+
+.team-summary-details {
+  display: grid;
+  gap: 7px;
+}
+
+.team-summary-card:not(.featured) .team-summary-details {
+  width: 100%;
+}
+
+.team-summary-details > div {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.team-summary-details strong {
+  min-width: 1.4em;
+  color: #25282c;
+  font-size: 1rem;
+}
+
+.team-summary-details span {
+  color: #555a60;
+  font-size: .76rem;
+  text-transform: uppercase;
 }
 
 .rankings-section,
@@ -1753,7 +1796,7 @@ button:focus-visible {
   }
 
   .team-summary-strip {
-    grid-template-columns: repeat(5, minmax(170px, 1fr));
+    grid-template-columns: minmax(360px, 1.7fr) repeat(4, minmax(230px, 1fr));
     overflow-x: auto;
   }
 
@@ -1816,6 +1859,14 @@ button:focus-visible {
 }
 
 @media (max-width: 560px) {
+  .team-summary-strip {
+    grid-template-columns: repeat(5, minmax(270px, 84vw));
+  }
+
+  .team-summary-card {
+    min-height: 150px;
+  }
+
   .team-switcher {
     grid-template-columns: 1fr;
     align-items: stretch;

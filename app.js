@@ -1295,11 +1295,27 @@ function renderStatistics() {
         <span class="filter-chip">Todos los partidos</span>
       </div>
       <section class="team-summary-strip">
-        ${renderTeamSummary("Partidos", teamStats.played, `${teamStats.won} ganados · ${teamStats.drawn} empatados · ${teamStats.lost} perdidos`)}
-        ${renderTeamSummary("Goles", teamStats.goalsFor, `${teamStats.goalsAgainst} encajados`)}
-        ${renderTeamSummary("Puntos", teamStats.points, `${formatGoalDifference(teamStats.goalsFor - teamStats.goalsAgainst)} diferencia de goles`)}
-        ${renderTeamSummary("Alineaciones", totalLineups, `${activePlayers().length} jugadores`)}
-        ${renderTeamSummary("Informes", totalReports, "Informes individuales guardados")}
+        ${renderTeamSummary("Partidos", "▣", teamStats.played, [
+          [teamStats.won, "ganados"],
+          [teamStats.drawn, "empatados"],
+          [teamStats.lost, "perdidos"]
+        ], true)}
+        ${renderTeamSummary("Goles", "⚽", teamStats.goalsFor, [
+          [teamStats.goalsFor, "marcados"],
+          [teamStats.goalsAgainst, "encajados"]
+        ])}
+        ${renderTeamSummary("Puntos", "◇", teamStats.points, [
+          [teamStats.points, "conseguidos"],
+          [formatGoalDifference(teamStats.goalsFor - teamStats.goalsAgainst), "diferencia de goles"]
+        ])}
+        ${renderTeamSummary("Alineaciones", "◎", totalLineups, [
+          [totalLineups, "registradas"],
+          [activePlayers().length, "jugadores"]
+        ])}
+        ${renderTeamSummary("Informes", "▤", totalReports, [
+          [totalReports, "guardados"],
+          [activePlayers().length, "jugadores disponibles"]
+        ])}
       </section>
 
       <section class="rankings-section">
@@ -1353,12 +1369,28 @@ function renderStatistics() {
   `;
 }
 
-function renderTeamSummary(label, value, detail) {
+function renderTeamSummary(label, icon, value, details, featured = false) {
   return `
-    <article class="team-summary-card">
-      <span>${escapeHtml(label)}</span>
-      <strong>${value}</strong>
-      <small>${escapeHtml(detail)}</small>
+    <article class="team-summary-card ${featured ? "featured" : ""}">
+      <div class="team-summary-title">
+        <span class="team-summary-icon" aria-hidden="true">${icon}</span>
+        <span>${escapeHtml(label)}</span>
+      </div>
+      <div class="team-summary-content">
+        ${featured ? `<strong class="team-summary-total">${value}</strong>` : ""}
+        <div class="team-summary-details">
+          ${details
+            .map(
+              ([number, text]) => `
+                <div>
+                  <strong>${number}</strong>
+                  <span>${escapeHtml(text)}</span>
+                </div>
+              `
+            )
+            .join("")}
+        </div>
+      </div>
     </article>
   `;
 }
