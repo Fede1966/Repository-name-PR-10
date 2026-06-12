@@ -120,6 +120,7 @@ playerForm.addEventListener("submit", async (event) => {
     photoPath: uploadedPhoto?.path || currentPlayer?.photoPath || "",
     description: currentPlayer?.description || "",
     career: currentPlayer?.career || "",
+    ratings: normalizePlayerRatings(currentPlayer?.ratings),
     reports: normalizePlayerReports(currentPlayer?.reports)
   };
 
@@ -173,6 +174,7 @@ function player(id, name, number, birthdate, position, laterality = "Diestro") {
     photoPath: "",
     description: "",
     career: "",
+    ratings: defaultPlayerRatings(),
     reports: {}
   };
 }
@@ -232,6 +234,7 @@ function loadState() {
         photoPath: item.photoPath || item.photo_path || "",
         description: item.description || "",
         career: item.career || "",
+        ratings: normalizePlayerRatings(item.ratings),
         reports: normalizePlayerReports(item.reports)
       })) || structuredClone(initialState.players),
       matches: saved.matches?.map((item) => ({
@@ -456,6 +459,7 @@ function toRemotePlayer(item) {
           profile_data: {
             description: item.description || "",
             career: item.career || "",
+            ratings: normalizePlayerRatings(item.ratings),
             reports: item.reports || {}
           }
         }
@@ -477,6 +481,7 @@ function fromRemotePlayer(item, localItem = {}) {
     photoPath: item.photo_path || "",
     description: remoteProfile.description || localItem.description || "",
     career: remoteProfile.career || localItem.career || "",
+    ratings: normalizePlayerRatings(remoteProfile.ratings || localItem.ratings),
     reports: normalizePlayerReports({ ...(localItem.reports || {}), ...(remoteProfile.reports || {}) })
   };
 }
@@ -667,6 +672,19 @@ function renderPlayerDetail() {
           Descripción del jugador
           <textarea id="player-description" maxlength="2000" placeholder="Describe sus características técnicas, físicas, tácticas y personales...">${escapeHtml(item.description || "")}</textarea>
         </label>
+        <section class="player-ratings-section">
+          <div class="ratings-heading">
+            <div>
+              <h3>Valoración del jugador</h3>
+              <p class="meta">Escala de 0 a 10. El valor 0 indica que aún no está valorado.</p>
+            </div>
+          </div>
+          <div class="player-ratings-grid">
+            ${Object.entries(playerRatingLabels())
+              .map(([key, label]) => renderPlayerRating(key, label, item.ratings?.[key] || 0))
+              .join("")}
+          </div>
+        </section>
       </div>
     </section>
     <div class="detail-tabs player-detail-tabs">
@@ -683,6 +701,15 @@ function renderPlayerDetail() {
   views.playerDetail.querySelector("#player-description").addEventListener("input", (event) => {
     item.description = event.target.value;
     saveState();
+  });
+  views.playerDetail.querySelectorAll("[data-player-rating]").forEach((input) => {
+    input.addEventListener("input", () => {
+      item.ratings = normalizePlayerRatings(item.ratings);
+      item.ratings[input.dataset.playerRating] = Number(input.value);
+      const output = views.playerDetail.querySelector(`[data-rating-output="${input.dataset.playerRating}"]`);
+      output.textContent = formatRating(input.value);
+      saveState();
+    });
   });
   views.playerDetail.querySelectorAll("[data-player-tab]").forEach((button) => {
     button.addEventListener("click", () => {
@@ -858,6 +885,18 @@ function renderPlayerInfo(label, value) {
       <span>${escapeHtml(label)}</span>
       <strong>${escapeHtml(value)}</strong>
     </div>
+  `;
+}
+
+function renderPlayerRating(key, label, value) {
+  return `
+    <label class="player-rating-item">
+      <span>${escapeHtml(label)}</span>
+      <div class="rating-control">
+        <input data-player-rating="${key}" type="range" min="0" max="10" step="0.5" value="${value}" />
+        <output data-rating-output="${key}">${formatRating(value)}</output>
+      </div>
+    </label>
   `;
 }
 
@@ -1490,6 +1529,33 @@ function applyFormation(item, formationId) {
   });
 }
 
+function playerRatingLabels() {
+  return {
+    technical: "Técnica",
+    tactical: "Táctica",
+    conditional: "Condicional",
+    cognitive: "Cognitiva"
+  };
+}
+
+function defaultPlayerRatings() {
+  return Object.fromEntries(Object.keys(playerRatingLabels()).map((key) => [key, 0]));
+}
+
+function normalizePlayerRatings(ratings) {
+  return Object.fromEntries(
+    Object.keys(playerRatingLabels()).map((key) => [
+      key,
+      clamp(Number(ratings?.[key]) || 0, 0, 10)
+    ])
+  );
+}
+
+function formatRating(value) {
+  const rating = Number(value) || 0;
+  return rating ? `${rating.toLocaleString("es-ES")} / 10` : "Sin valorar";
+}
+
 function normalizePlayerReports(reports) {
   return Object.fromEntries(
     Object.entries(reports || {}).map(([matchId, value]) => {
@@ -1578,6 +1644,12 @@ function downloadPlayerPdf(item) {
           .info span, .metric span { display: block; color: #6a717c; font-size: 9px; text-transform: uppercase; }
           .info strong, .metric strong { display: block; margin-top: 3px; }
           .metrics { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+          .ratings { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; }
+          .rating { padding: 10px; border: 1px solid #dde1e7; }
+          .rating span { display: block; color: #6a717c; font-size: 9px; text-transform: uppercase; }
+          .rating strong { display: block; margin-top: 4px; font-size: 16px; }
+          .rating-bar { height: 5px; margin-top: 7px; background: #e3e6e9; }
+          .rating-bar i { display: block; height: 100%; background: #b7192b; }
           .description { white-space: pre-wrap; line-height: 1.5; }
           .report { break-inside: avoid; margin-bottom: 10px; padding: 10px; border: 1px solid #dde1e7; }
           .report h3 { margin: 0 0 5px; }
@@ -1603,6 +1675,12 @@ function downloadPlayerPdf(item) {
         </header>
         <h2>Descripción</h2>
         <div class="description">${escapeHtml(item.description || "Sin descripción.")}</div>
+        <h2>Valoración</h2>
+        <div class="ratings">
+          ${Object.entries(playerRatingLabels())
+            .map(([key, label]) => renderPdfRating(label, normalizePlayerRatings(item.ratings)[key]))
+            .join("")}
+        </div>
         <h2>Estadísticas</h2>
         <div class="metrics">
           ${renderPdfMetric("Alineaciones", appearances.length)}
@@ -1641,6 +1719,16 @@ function renderPdfInfo(label, value) {
 
 function renderPdfMetric(label, value) {
   return `<div class="metric"><span>${escapeHtml(label)}</span><strong>${escapeHtml(value)}</strong></div>`;
+}
+
+function renderPdfRating(label, value) {
+  return `
+    <div class="rating">
+      <span>${escapeHtml(label)}</span>
+      <strong>${escapeHtml(formatRating(value))}</strong>
+      <div class="rating-bar"><i style="width:${value * 10}%"></i></div>
+    </div>
+  `;
 }
 
 function parsedMatches() {

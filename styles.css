@@ -314,6 +314,62 @@ button {
   min-height: 110px;
 }
 
+.player-ratings-section {
+  margin-top: 18px;
+  padding-top: 18px;
+  border-top: 1px solid var(--line);
+}
+
+.ratings-heading h3,
+.ratings-heading p {
+  margin: 0;
+}
+
+.ratings-heading p {
+  margin-top: 4px;
+}
+
+.player-ratings-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(180px, 1fr));
+  gap: 12px;
+  margin-top: 14px;
+}
+
+.player-rating-item {
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--soft);
+}
+
+.player-rating-item > span {
+  font-size: .8rem;
+  text-transform: uppercase;
+}
+
+.rating-control {
+  display: grid;
+  grid-template-columns: minmax(100px, 1fr) 88px;
+  align-items: center;
+  gap: 12px;
+}
+
+.rating-control input[type="range"] {
+  padding: 0;
+  accent-color: var(--red);
+}
+
+.rating-control output {
+  padding: 7px 8px;
+  border-radius: 6px;
+  color: var(--red-dark);
+  background: #fff;
+  text-align: center;
+  font-size: .78rem;
+  font-weight: 850;
+}
+
 .player-detail-tabs {
   overflow-x: auto;
   padding-bottom: 2px;
@@ -1440,6 +1496,10 @@ button:focus-visible {
 
   .player-info-grid {
     grid-template-columns: repeat(2, minmax(120px, 1fr));
+  }
+
+  .player-ratings-grid {
+    grid-template-columns: 1fr;
   }
 
   .pitch {
