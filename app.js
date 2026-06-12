@@ -728,7 +728,7 @@ function renderPlayerDetail() {
 function renderPlayerStatistics(item, body) {
   const appearances = state.matches.filter((matchItem) => matchItem.lineup?.[item.id]);
   const playedAppearances = appearances.filter((matchItem) => Boolean(parseScore(matchItem.score)));
-  const minutesPlayed = playerMinutesPlayed(item);
+  const totals = playerReportTotals(item);
   const latestAppearance = appearances
     .slice()
     .sort((a, b) => b.round - a.round)[0];
@@ -744,8 +744,13 @@ function renderPlayerStatistics(item, body) {
       <div class="metrics-grid player-metrics-grid">
         ${renderMetric("Alineaciones", appearances.length)}
         ${renderMetric("Partidos jugados", playedAppearances.length)}
-        ${renderMetric("Minutos jugados", minutesPlayed)}
-        ${renderMetric("Dorsal", item.number)}
+        ${renderMetric("Minutos jugados", totals.minutes)}
+        ${renderMetric("Goles", totals.goals)}
+        ${renderMetric("Asistencias", totals.assists)}
+        ${renderMetric("Pases de gol", totals.goalPasses)}
+        ${renderMetric("Pases correctos", totals.completedPasses)}
+        ${renderMetric("Pérdidas", totals.losses)}
+        ${renderMetric("Recuperaciones", totals.recoveries)}
       </div>
       <div class="player-stat-summary">
         <div>
@@ -827,10 +832,13 @@ function renderPlayerReports(item, body) {
                         <textarea data-player-report-text="${matchItem.id}" maxlength="3000" placeholder="Rendimiento, aspectos destacados y puntos de mejora...">${escapeHtml(report.text)}</textarea>
                       </label>
                       <div class="report-data-grid">
-                        <label>
-                          Minutos jugados
-                          <input data-player-report-minutes="${matchItem.id}" type="number" min="0" max="130" value="${report.minutes || ""}" placeholder="90" />
-                        </label>
+                        ${renderReportStatInput(matchItem.id, "completedPasses", "Pases correctos", report.completedPasses)}
+                        ${renderReportStatInput(matchItem.id, "losses", "Pérdidas", report.losses)}
+                        ${renderReportStatInput(matchItem.id, "recoveries", "Recuperaciones", report.recoveries)}
+                        ${renderReportStatInput(matchItem.id, "minutes", "Minutos jugados", report.minutes, 130)}
+                        ${renderReportStatInput(matchItem.id, "goals", "Goles", report.goals)}
+                        ${renderReportStatInput(matchItem.id, "assists", "Asistencias", report.assists)}
+                        ${renderReportStatInput(matchItem.id, "goalPasses", "Pases de gol", report.goalPasses)}
                         <label>
                           Vídeo de YouTube
                           <input data-player-report-youtube="${matchItem.id}" type="url" value="${escapeAttr(report.youtube)}" placeholder="https://www.youtube.com/watch?v=..." />
@@ -862,10 +870,12 @@ function renderPlayerReports(item, body) {
       saveState();
     });
   });
-  body.querySelectorAll("[data-player-report-minutes]").forEach((input) => {
+  body.querySelectorAll("[data-player-report-stat]").forEach((input) => {
     input.addEventListener("input", () => {
-      const report = ensurePlayerReport(item, input.dataset.playerReportMinutes);
-      report.minutes = clamp(Number(input.value) || 0, 0, 130);
+      const report = ensurePlayerReport(item, input.dataset.playerReportStat);
+      const key = input.dataset.reportStat;
+      const maximum = key === "minutes" ? 130 : 9999;
+      report[key] = clamp(Math.round(Number(input.value) || 0), 0, maximum);
       saveState();
     });
   });
@@ -877,6 +887,23 @@ function renderPlayerReports(item, body) {
     });
     input.addEventListener("change", render);
   });
+}
+
+function renderReportStatInput(matchId, key, label, value, max = 9999) {
+  return `
+    <label>
+      ${escapeHtml(label)}
+      <input
+        data-player-report-stat="${matchId}"
+        data-report-stat="${key}"
+        type="number"
+        min="0"
+        max="${max}"
+        value="${value || ""}"
+        placeholder="0"
+      />
+    </label>
+  `;
 }
 
 function renderPlayerInfo(label, value) {
@@ -1056,8 +1083,8 @@ function renderStatistics() {
   const rankingCards = [
     { title: "Alineaciones", key: "appearances", suffix: "" },
     { title: "Partidos jugados", key: "played", suffix: "" },
-    { title: "Participación", key: "participation", suffix: "%" },
-    { title: "Informes", key: "reports", suffix: "" }
+    { title: "Minutos", key: "minutes", suffix: "" },
+    { title: "Goles", key: "goals", suffix: "" }
   ];
 
   views.statistics.innerHTML = `
@@ -1093,7 +1120,7 @@ function renderStatistics() {
             <p class="eyebrow">Plantilla 2026</p>
             <h2>Estadísticas jugadores</h2>
           </div>
-          <span class="meta">— indica una estadística todavía no registrada</span>
+          <span class="meta">Totales acumulados desde los informes de partido</span>
         </div>
         <div class="table-panel">
           <div class="data-table-scroll">
@@ -1103,12 +1130,13 @@ function renderStatistics() {
                   <th>Jugador</th>
                   <th>Alineaciones</th>
                   <th>Jugados</th>
-                  <th>Participación</th>
-                  <th>Informes</th>
+                  <th>Minutos</th>
                   <th>Goles</th>
                   <th>Asistencias</th>
-                  <th>Amarillas</th>
-                  <th>Rojas</th>
+                  <th>Pases de gol</th>
+                  <th>Pases correctos</th>
+                  <th>Pérdidas</th>
+                  <th>Recuperaciones</th>
                 </tr>
               </thead>
               <tbody>
@@ -1183,12 +1211,13 @@ function renderPlayerStatisticsRow(item) {
       </td>
       <td>${item.appearances}</td>
       <td>${item.played}</td>
-      <td>${item.participation}%</td>
-      <td>${item.reports}</td>
-      <td>—</td>
-      <td>—</td>
-      <td>—</td>
-      <td>—</td>
+      <td>${item.minutes}</td>
+      <td>${item.goals}</td>
+      <td>${item.assists}</td>
+      <td>${item.goalPasses}</td>
+      <td>${item.completedPasses}</td>
+      <td>${item.losses}</td>
+      <td>${item.recoveries}</td>
     </tr>
   `;
 }
@@ -1560,38 +1589,98 @@ function normalizePlayerReports(reports) {
   return Object.fromEntries(
     Object.entries(reports || {}).map(([matchId, value]) => {
       if (typeof value === "string") {
-        return [matchId, { text: value, minutes: 0, youtube: "" }];
+        return [matchId, { ...emptyPlayerReport(), text: value }];
       }
       return [
         matchId,
         {
+          ...emptyPlayerReport(),
           text: value?.text || "",
           minutes: clamp(Number(value?.minutes) || 0, 0, 130),
-          youtube: value?.youtube || ""
+          youtube: value?.youtube || "",
+          completedPasses: nonNegativeInteger(value?.completedPasses),
+          losses: nonNegativeInteger(value?.losses),
+          recoveries: nonNegativeInteger(value?.recoveries),
+          goals: nonNegativeInteger(value?.goals),
+          assists: nonNegativeInteger(value?.assists),
+          goalPasses: nonNegativeInteger(value?.goalPasses)
         }
       ];
     })
   );
 }
 
+function emptyPlayerReport() {
+  return {
+    text: "",
+    minutes: 0,
+    youtube: "",
+    completedPasses: 0,
+    losses: 0,
+    recoveries: 0,
+    goals: 0,
+    assists: 0,
+    goalPasses: 0
+  };
+}
+
+function nonNegativeInteger(value) {
+  return Math.max(0, Math.round(Number(value) || 0));
+}
+
 function playerReport(item, matchId) {
   const value = item.reports?.[matchId];
-  if (typeof value === "string") return { text: value, minutes: 0, youtube: "" };
+  if (typeof value === "string") return { ...emptyPlayerReport(), text: value };
   return {
+    ...emptyPlayerReport(),
     text: value?.text || "",
     minutes: clamp(Number(value?.minutes) || 0, 0, 130),
-    youtube: value?.youtube || ""
+    youtube: value?.youtube || "",
+    completedPasses: nonNegativeInteger(value?.completedPasses),
+    losses: nonNegativeInteger(value?.losses),
+    recoveries: nonNegativeInteger(value?.recoveries),
+    goals: nonNegativeInteger(value?.goals),
+    assists: nonNegativeInteger(value?.assists),
+    goalPasses: nonNegativeInteger(value?.goalPasses)
   };
 }
 
 function ensurePlayerReport(item, matchId) {
   item.reports = normalizePlayerReports(item.reports);
-  item.reports[matchId] ||= { text: "", minutes: 0, youtube: "" };
+  item.reports[matchId] ||= emptyPlayerReport();
   return item.reports[matchId];
 }
 
 function playerMinutesPlayed(item) {
-  return state.matches.reduce((total, matchItem) => total + playerReport(item, matchItem.id).minutes, 0);
+  return playerReportTotals(item).minutes;
+}
+
+function playerReportTotals(item) {
+  const keys = ["minutes", "completedPasses", "losses", "recoveries", "goals", "assists", "goalPasses"];
+  return state.matches.reduce(
+    (totals, matchItem) => {
+      const report = playerReport(item, matchItem.id);
+      keys.forEach((key) => {
+        totals[key] += report[key];
+      });
+      return totals;
+    },
+    Object.fromEntries(keys.map((key) => [key, 0]))
+  );
+}
+
+function playerReportHasData(report) {
+  return Boolean(
+    report.text.trim() ||
+      report.youtube ||
+      report.minutes ||
+      report.completedPasses ||
+      report.losses ||
+      report.recoveries ||
+      report.goals ||
+      report.assists ||
+      report.goalPasses
+  );
 }
 
 function youtubeEmbedUrl(value) {
@@ -1613,11 +1702,12 @@ function youtubeEmbedUrl(value) {
 
 function downloadPlayerPdf(item) {
   const appearances = state.matches.filter((matchItem) => matchItem.lineup?.[item.id]);
+  const totals = playerReportTotals(item);
   const reports = state.matches
     .slice()
     .sort((a, b) => a.round - b.round)
     .map((matchItem) => ({ match: matchItem, report: playerReport(item, matchItem.id) }))
-    .filter(({ report }) => report.text || report.minutes || report.youtube);
+    .filter(({ report }) => playerReportHasData(report));
   const popup = window.open("", "_blank", "width=900,height=700");
   if (!popup) {
     alert("El navegador ha bloqueado la ventana del PDF. Permite ventanas emergentes y vuelve a intentarlo.");
@@ -1644,6 +1734,10 @@ function downloadPlayerPdf(item) {
           .info span, .metric span { display: block; color: #6a717c; font-size: 9px; text-transform: uppercase; }
           .info strong, .metric strong { display: block; margin-top: 3px; }
           .metrics { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+          .report-stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 5px; margin-top: 8px; }
+          .report-stats div { padding: 6px; background: #f1f3f5; }
+          .report-stats span { display: block; color: #6a717c; font-size: 8px; text-transform: uppercase; }
+          .report-stats strong { display: block; margin-top: 2px; }
           .ratings { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; }
           .rating { padding: 10px; border: 1px solid #dde1e7; }
           .rating span { display: block; color: #6a717c; font-size: 9px; text-transform: uppercase; }
@@ -1685,7 +1779,13 @@ function downloadPlayerPdf(item) {
         <div class="metrics">
           ${renderPdfMetric("Alineaciones", appearances.length)}
           ${renderPdfMetric("Partidos jugados", appearances.filter((matchItem) => parseScore(matchItem.score)).length)}
-          ${renderPdfMetric("Minutos jugados", playerMinutesPlayed(item))}
+          ${renderPdfMetric("Minutos jugados", totals.minutes)}
+          ${renderPdfMetric("Goles", totals.goals)}
+          ${renderPdfMetric("Asistencias", totals.assists)}
+          ${renderPdfMetric("Pases de gol", totals.goalPasses)}
+          ${renderPdfMetric("Pases correctos", totals.completedPasses)}
+          ${renderPdfMetric("Pérdidas", totals.losses)}
+          ${renderPdfMetric("Recuperaciones", totals.recoveries)}
         </div>
         <h2>Trayectoria</h2>
         <div class="description">${escapeHtml(item.career || `${TEAM_NAME} · Temporada 2026`)}</div>
@@ -1698,6 +1798,14 @@ function downloadPlayerPdf(item) {
                     <article class="report">
                       <h3>Jornada ${match.round}: ${escapeHtml(match.home)} vs ${escapeHtml(match.away)}</h3>
                       <div class="meta">${match.date ? formatDate(match.date) : "Fecha pendiente"} · ${report.minutes} minutos</div>
+                      <div class="report-stats">
+                        ${renderPdfReportStat("Pases correctos", report.completedPasses)}
+                        ${renderPdfReportStat("Pérdidas", report.losses)}
+                        ${renderPdfReportStat("Recuperaciones", report.recoveries)}
+                        ${renderPdfReportStat("Goles", report.goals)}
+                        ${renderPdfReportStat("Asistencias", report.assists)}
+                        ${renderPdfReportStat("Pases de gol", report.goalPasses)}
+                      </div>
                       ${report.text ? `<p>${escapeHtml(report.text)}</p>` : ""}
                       ${report.youtube ? `<p><a href="${escapeAttr(report.youtube)}">${escapeHtml(report.youtube)}</a></p>` : ""}
                     </article>
@@ -1729,6 +1837,10 @@ function renderPdfRating(label, value) {
       <div class="rating-bar"><i style="width:${value * 10}%"></i></div>
     </div>
   `;
+}
+
+function renderPdfReportStat(label, value) {
+  return `<div><span>${escapeHtml(label)}</span><strong>${value}</strong></div>`;
 }
 
 function parsedMatches() {
@@ -1840,6 +1952,7 @@ function buildPlayerStatistics() {
     .map((item) => {
       const appearances = state.matches.filter((matchItem) => matchItem.lineup?.[item.id]);
       const played = appearances.filter((matchItem) => Boolean(parseScore(matchItem.score))).length;
+      const totals = playerReportTotals(item);
       return {
         id: item.id,
         name: item.name,
@@ -1849,9 +1962,10 @@ function buildPlayerStatistics() {
         appearances: appearances.length,
         played,
         participation: totalMatches ? Math.round((appearances.length / totalMatches) * 100) : 0,
+        ...totals,
         reports: Object.keys(item.reports || {}).filter((matchId) => {
           const report = playerReport(item, matchId);
-          return report.text.trim() || report.minutes || report.youtube;
+          return playerReportHasData(report);
         }).length
       };
     })

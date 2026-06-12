@@ -477,9 +477,13 @@ button {
 
 .report-data-grid {
   display: grid;
-  grid-template-columns: minmax(150px, .35fr) minmax(260px, 1fr);
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
   gap: 12px;
   margin-top: 12px;
+}
+
+.report-data-grid label:last-child {
+  grid-column: span 2;
 }
 
 .youtube-video {
@@ -900,7 +904,7 @@ button {
 }
 
 .player-statistics-table {
-  min-width: 920px;
+  min-width: 1180px;
   text-align: center;
 }
 
@@ -1492,6 +1496,10 @@ button:focus-visible {
 
   .report-data-grid {
     grid-template-columns: 1fr;
+  }
+
+  .report-data-grid label:last-child {
+    grid-column: auto;
   }
 
   .player-info-grid {
