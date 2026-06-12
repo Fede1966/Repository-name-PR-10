@@ -120,7 +120,7 @@ playerForm.addEventListener("submit", async (event) => {
     photoPath: uploadedPhoto?.path || currentPlayer?.photoPath || "",
     description: currentPlayer?.description || "",
     career: currentPlayer?.career || "",
-    reports: currentPlayer?.reports || {}
+    reports: normalizePlayerReports(currentPlayer?.reports)
   };
 
   const index = state.players.findIndex((item) => item.id === formPlayer.id);
@@ -232,7 +232,7 @@ function loadState() {
         photoPath: item.photoPath || item.photo_path || "",
         description: item.description || "",
         career: item.career || "",
-        reports: item.reports || {}
+        reports: normalizePlayerReports(item.reports)
       })) || structuredClone(initialState.players),
       matches: saved.matches?.map((item) => ({
         ...item,
@@ -477,7 +477,7 @@ function fromRemotePlayer(item, localItem = {}) {
     photoPath: item.photo_path || "",
     description: remoteProfile.description || localItem.description || "",
     career: remoteProfile.career || localItem.career || "",
-    reports: { ...(localItem.reports || {}), ...(remoteProfile.reports || {}) }
+    reports: normalizePlayerReports({ ...(localItem.reports || {}), ...(remoteProfile.reports || {}) })
   };
 }
 
@@ -640,7 +640,10 @@ function renderPlayerDetail() {
   views.playerDetail.innerHTML = `
     <div class="player-profile-header">
       <button class="secondary-button" id="back-to-squad" type="button">Volver a plantilla</button>
-      <button class="secondary-button" data-edit-player="${item.id}" type="button">Editar jugador</button>
+      <div class="row-actions">
+        <button class="primary-button" id="download-player-pdf" type="button">Descargar PDF</button>
+        <button class="secondary-button" data-edit-player="${item.id}" type="button">Editar jugador</button>
+      </div>
     </div>
     <section class="player-profile-card">
       <div class="player-profile-photo" ${photoStyle}>${item.photo ? "" : initials(item.name)}</div>
@@ -675,6 +678,7 @@ function renderPlayerDetail() {
   `;
 
   views.playerDetail.querySelector("#back-to-squad").addEventListener("click", () => setView("squad"));
+  views.playerDetail.querySelector("#download-player-pdf").addEventListener("click", () => downloadPlayerPdf(item));
   views.playerDetail.querySelector("[data-edit-player]").addEventListener("click", () => openPlayerDialog(item.id));
   views.playerDetail.querySelector("#player-description").addEventListener("input", (event) => {
     item.description = event.target.value;
@@ -697,8 +701,7 @@ function renderPlayerDetail() {
 function renderPlayerStatistics(item, body) {
   const appearances = state.matches.filter((matchItem) => matchItem.lineup?.[item.id]);
   const playedAppearances = appearances.filter((matchItem) => Boolean(parseScore(matchItem.score)));
-  const selectedMatches = state.matches.length;
-  const participation = selectedMatches ? Math.round((appearances.length / selectedMatches) * 100) : 0;
+  const minutesPlayed = playerMinutesPlayed(item);
   const latestAppearance = appearances
     .slice()
     .sort((a, b) => b.round - a.round)[0];
@@ -714,7 +717,7 @@ function renderPlayerStatistics(item, body) {
       <div class="metrics-grid player-metrics-grid">
         ${renderMetric("Alineaciones", appearances.length)}
         ${renderMetric("Partidos jugados", playedAppearances.length)}
-        ${renderMetric("Participación", `${participation}%`)}
+        ${renderMetric("Minutos jugados", minutesPlayed)}
         ${renderMetric("Dorsal", item.number)}
       </div>
       <div class="player-stat-summary">
@@ -780,6 +783,8 @@ function renderPlayerReports(item, body) {
             ? matches
                 .map((matchItem) => {
                   const inLineup = Boolean(matchItem.lineup?.[item.id]);
+                  const report = playerReport(item, matchItem.id);
+                  const videoEmbedUrl = youtubeEmbedUrl(report.youtube);
                   return `
                     <article class="player-report-card">
                       <div class="player-report-heading">
@@ -792,8 +797,27 @@ function renderPlayerReports(item, body) {
                       </div>
                       <label>
                         Informe individual
-                        <textarea data-player-report="${matchItem.id}" maxlength="3000" placeholder="Rendimiento, aspectos destacados y puntos de mejora...">${escapeHtml(item.reports?.[matchItem.id] || "")}</textarea>
+                        <textarea data-player-report-text="${matchItem.id}" maxlength="3000" placeholder="Rendimiento, aspectos destacados y puntos de mejora...">${escapeHtml(report.text)}</textarea>
                       </label>
+                      <div class="report-data-grid">
+                        <label>
+                          Minutos jugados
+                          <input data-player-report-minutes="${matchItem.id}" type="number" min="0" max="130" value="${report.minutes || ""}" placeholder="90" />
+                        </label>
+                        <label>
+                          Vídeo de YouTube
+                          <input data-player-report-youtube="${matchItem.id}" type="url" value="${escapeAttr(report.youtube)}" placeholder="https://www.youtube.com/watch?v=..." />
+                        </label>
+                      </div>
+                      ${
+                        videoEmbedUrl
+                          ? `<div class="youtube-video">
+                              <iframe src="${escapeAttr(videoEmbedUrl)}" title="Vídeo del informe de ${escapeAttr(item.name)}" loading="lazy" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>
+                            </div>`
+                          : report.youtube
+                            ? `<p class="video-url-error">El enlace no parece ser un vídeo válido de YouTube.</p>`
+                            : ""
+                      }
                     </article>
                   `;
                 })
@@ -804,12 +828,27 @@ function renderPlayerReports(item, body) {
     </section>
   `;
 
-  body.querySelectorAll("[data-player-report]").forEach((textarea) => {
+  body.querySelectorAll("[data-player-report-text]").forEach((textarea) => {
     textarea.addEventListener("input", () => {
-      item.reports ||= {};
-      item.reports[textarea.dataset.playerReport] = textarea.value;
+      const report = ensurePlayerReport(item, textarea.dataset.playerReportText);
+      report.text = textarea.value;
       saveState();
     });
+  });
+  body.querySelectorAll("[data-player-report-minutes]").forEach((input) => {
+    input.addEventListener("input", () => {
+      const report = ensurePlayerReport(item, input.dataset.playerReportMinutes);
+      report.minutes = clamp(Number(input.value) || 0, 0, 130);
+      saveState();
+    });
+  });
+  body.querySelectorAll("[data-player-report-youtube]").forEach((input) => {
+    input.addEventListener("input", () => {
+      const report = ensurePlayerReport(item, input.dataset.playerReportYoutube);
+      report.youtube = input.value.trim();
+      saveState();
+    });
+    input.addEventListener("change", render);
   });
 }
 
@@ -1451,6 +1490,159 @@ function applyFormation(item, formationId) {
   });
 }
 
+function normalizePlayerReports(reports) {
+  return Object.fromEntries(
+    Object.entries(reports || {}).map(([matchId, value]) => {
+      if (typeof value === "string") {
+        return [matchId, { text: value, minutes: 0, youtube: "" }];
+      }
+      return [
+        matchId,
+        {
+          text: value?.text || "",
+          minutes: clamp(Number(value?.minutes) || 0, 0, 130),
+          youtube: value?.youtube || ""
+        }
+      ];
+    })
+  );
+}
+
+function playerReport(item, matchId) {
+  const value = item.reports?.[matchId];
+  if (typeof value === "string") return { text: value, minutes: 0, youtube: "" };
+  return {
+    text: value?.text || "",
+    minutes: clamp(Number(value?.minutes) || 0, 0, 130),
+    youtube: value?.youtube || ""
+  };
+}
+
+function ensurePlayerReport(item, matchId) {
+  item.reports = normalizePlayerReports(item.reports);
+  item.reports[matchId] ||= { text: "", minutes: 0, youtube: "" };
+  return item.reports[matchId];
+}
+
+function playerMinutesPlayed(item) {
+  return state.matches.reduce((total, matchItem) => total + playerReport(item, matchItem.id).minutes, 0);
+}
+
+function youtubeEmbedUrl(value) {
+  if (!value) return "";
+  try {
+    const url = new URL(value);
+    const host = url.hostname.replace(/^www\./, "");
+    let videoId = "";
+    if (host === "youtu.be") videoId = url.pathname.split("/").filter(Boolean)[0] || "";
+    if (host === "youtube.com" || host === "m.youtube.com") {
+      if (url.pathname === "/watch") videoId = url.searchParams.get("v") || "";
+      else videoId = url.pathname.match(/^\/(?:embed|shorts|live)\/([^/?]+)/)?.[1] || "";
+    }
+    return /^[a-zA-Z0-9_-]{6,}$/.test(videoId) ? `https://www.youtube.com/embed/${videoId}` : "";
+  } catch {
+    return "";
+  }
+}
+
+function downloadPlayerPdf(item) {
+  const appearances = state.matches.filter((matchItem) => matchItem.lineup?.[item.id]);
+  const reports = state.matches
+    .slice()
+    .sort((a, b) => a.round - b.round)
+    .map((matchItem) => ({ match: matchItem, report: playerReport(item, matchItem.id) }))
+    .filter(({ report }) => report.text || report.minutes || report.youtube);
+  const popup = window.open("", "_blank", "width=900,height=700");
+  if (!popup) {
+    alert("El navegador ha bloqueado la ventana del PDF. Permite ventanas emergentes y vuelve a intentarlo.");
+    return;
+  }
+
+  popup.document.write(`
+    <!doctype html>
+    <html lang="es">
+      <head>
+        <meta charset="UTF-8" />
+        <title>Ficha de ${escapeHtml(item.name)}</title>
+        <style>
+          @page { size: A4; margin: 16mm; }
+          * { box-sizing: border-box; }
+          body { margin: 0; color: #20242a; font: 12px Arial, sans-serif; }
+          header { display: grid; grid-template-columns: 120px 1fr; gap: 20px; padding-bottom: 18px; border-bottom: 3px solid #b7192b; }
+          .photo { width: 120px; height: 150px; display: grid; place-items: center; color: white; background: #b7192b center/cover; font-size: 30px; font-weight: bold; }
+          h1 { margin: 0 0 5px; font-size: 27px; }
+          h2 { margin: 22px 0 10px; color: #861424; font-size: 17px; }
+          .meta { color: #6a717c; }
+          .info { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; margin-top: 14px; }
+          .info div, .metric { padding: 9px; background: #f1f3f5; }
+          .info span, .metric span { display: block; color: #6a717c; font-size: 9px; text-transform: uppercase; }
+          .info strong, .metric strong { display: block; margin-top: 3px; }
+          .metrics { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+          .description { white-space: pre-wrap; line-height: 1.5; }
+          .report { break-inside: avoid; margin-bottom: 10px; padding: 10px; border: 1px solid #dde1e7; }
+          .report h3 { margin: 0 0 5px; }
+          .report p { margin: 6px 0 0; white-space: pre-wrap; line-height: 1.45; }
+          a { color: #125bd8; overflow-wrap: anywhere; }
+        </style>
+      </head>
+      <body>
+        <header>
+          <div class="photo" ${item.photo ? `style="background-image:url('${escapeAttr(item.photo)}')"` : ""}>${item.photo ? "" : initials(item.name)}</div>
+          <div>
+            <div class="meta">ATHLETIC CLUB · FICHA TÉCNICA</div>
+            <h1>${escapeHtml(item.name)}</h1>
+            <div class="info">
+              ${renderPdfInfo("Fecha de nacimiento", formatDate(item.birthdate))}
+              ${renderPdfInfo("Edad", `${calculateAge(item.birthdate)} años`)}
+              ${renderPdfInfo("Posición", item.position)}
+              ${renderPdfInfo("Lateralidad", item.laterality || "Diestro")}
+              ${renderPdfInfo("Dorsal", item.number)}
+              ${renderPdfInfo("Temporada", "2026")}
+            </div>
+          </div>
+        </header>
+        <h2>Descripción</h2>
+        <div class="description">${escapeHtml(item.description || "Sin descripción.")}</div>
+        <h2>Estadísticas</h2>
+        <div class="metrics">
+          ${renderPdfMetric("Alineaciones", appearances.length)}
+          ${renderPdfMetric("Partidos jugados", appearances.filter((matchItem) => parseScore(matchItem.score)).length)}
+          ${renderPdfMetric("Minutos jugados", playerMinutesPlayed(item))}
+        </div>
+        <h2>Trayectoria</h2>
+        <div class="description">${escapeHtml(item.career || `${TEAM_NAME} · Temporada 2026`)}</div>
+        <h2>Informes de partido</h2>
+        ${
+          reports.length
+            ? reports
+                .map(
+                  ({ match, report }) => `
+                    <article class="report">
+                      <h3>Jornada ${match.round}: ${escapeHtml(match.home)} vs ${escapeHtml(match.away)}</h3>
+                      <div class="meta">${match.date ? formatDate(match.date) : "Fecha pendiente"} · ${report.minutes} minutos</div>
+                      ${report.text ? `<p>${escapeHtml(report.text)}</p>` : ""}
+                      ${report.youtube ? `<p><a href="${escapeAttr(report.youtube)}">${escapeHtml(report.youtube)}</a></p>` : ""}
+                    </article>
+                  `
+                )
+                .join("")
+            : "<p>Sin informes registrados.</p>"
+        }
+        <script>window.addEventListener("load", () => setTimeout(() => window.print(), 300));<\/script>
+      </body>
+    </html>
+  `);
+  popup.document.close();
+}
+
+function renderPdfInfo(label, value) {
+  return `<div><span>${escapeHtml(label)}</span><strong>${escapeHtml(value)}</strong></div>`;
+}
+
+function renderPdfMetric(label, value) {
+  return `<div class="metric"><span>${escapeHtml(label)}</span><strong>${escapeHtml(value)}</strong></div>`;
+}
+
 function parsedMatches() {
   return state.matches.flatMap((item) => {
     const score = parseScore(item.score);
@@ -1569,7 +1761,10 @@ function buildPlayerStatistics() {
         appearances: appearances.length,
         played,
         participation: totalMatches ? Math.round((appearances.length / totalMatches) * 100) : 0,
-        reports: Object.values(item.reports || {}).filter((report) => String(report).trim()).length
+        reports: Object.keys(item.reports || {}).filter((matchId) => {
+          const report = playerReport(item, matchId);
+          return report.text.trim() || report.minutes || report.youtube;
+        }).length
       };
     })
     .sort((a, b) => b.appearances - a.appearances || a.number - b.number);
