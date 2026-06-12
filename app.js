@@ -972,65 +972,146 @@ function renderStandings() {
 function renderStatistics() {
   const matches = parsedMatches();
   const teamStats = calculateTeamStats(matches);
-  const positionCounts = countPlayersByPosition();
-  const resultTotal = teamStats.won + teamStats.drawn + teamStats.lost;
+  const playerRows = buildPlayerStatistics();
+  const totalLineups = playerRows.reduce((total, playerItem) => total + playerItem.appearances, 0);
+  const totalReports = playerRows.reduce((total, playerItem) => total + playerItem.reports, 0);
+  const rankingCards = [
+    { title: "Alineaciones", key: "appearances", suffix: "" },
+    { title: "Partidos jugados", key: "played", suffix: "" },
+    { title: "Participación", key: "participation", suffix: "%" },
+    { title: "Informes", key: "reports", suffix: "" }
+  ];
 
   views.statistics.innerHTML = `
-    <div class="statistics-grid">
-      <section class="panel statistics-section">
-        <div class="section-intro">
-          <div>
-            <h2>Rendimiento del equipo</h2>
-            <p class="meta">Resumen de los resultados registrados.</p>
-          </div>
-        </div>
-        <div class="metrics-grid">
-          ${renderMetric("Partidos", teamStats.played)}
-          ${renderMetric("Victorias", teamStats.won)}
-          ${renderMetric("Empates", teamStats.drawn)}
-          ${renderMetric("Derrotas", teamStats.lost)}
-          ${renderMetric("Goles a favor", teamStats.goalsFor)}
-          ${renderMetric("Goles en contra", teamStats.goalsAgainst)}
-          ${renderMetric("Diferencia", formatGoalDifference(teamStats.goalsFor - teamStats.goalsAgainst))}
-          ${renderMetric("Puntos", teamStats.points)}
-        </div>
-        ${
-          resultTotal
-            ? `<div class="result-bar" aria-label="Distribución de resultados">
-                <span class="result-wins" style="width:${(teamStats.won / resultTotal) * 100}%"></span>
-                <span class="result-draws" style="width:${(teamStats.drawn / resultTotal) * 100}%"></span>
-                <span class="result-losses" style="width:${(teamStats.lost / resultTotal) * 100}%"></span>
-              </div>
-              <div class="result-legend">
-                <span><i class="legend-dot wins-dot"></i>Victorias</span>
-                <span><i class="legend-dot draws-dot"></i>Empates</span>
-                <span><i class="legend-dot losses-dot"></i>Derrotas</span>
-              </div>`
-            : `<p class="empty-inline">Añade resultados para ver el rendimiento.</p>`
-        }
+    <div class="club-statistics-page">
+      <div class="statistics-filters">
+        <span class="filter-chip">Temporada 2026</span>
+        <span class="filter-chip">Todos los partidos</span>
+      </div>
+      <section class="team-summary-strip">
+        ${renderTeamSummary("Partidos", teamStats.played, `${teamStats.won} ganados · ${teamStats.drawn} empatados · ${teamStats.lost} perdidos`)}
+        ${renderTeamSummary("Goles", teamStats.goalsFor, `${teamStats.goalsAgainst} encajados`)}
+        ${renderTeamSummary("Puntos", teamStats.points, `${formatGoalDifference(teamStats.goalsFor - teamStats.goalsAgainst)} diferencia de goles`)}
+        ${renderTeamSummary("Alineaciones", totalLineups, `${state.players.length} jugadores`)}
+        ${renderTeamSummary("Informes", totalReports, "Informes individuales guardados")}
       </section>
-      <section class="panel statistics-section">
-        <div class="section-intro">
+
+      <section class="rankings-section">
+        <div class="statistics-title-row">
           <div>
-            <h2>Composición de la plantilla</h2>
-            <p class="meta">${state.players.length} jugadores registrados.</p>
+            <p class="eyebrow">Rendimiento individual</p>
+            <h2>Rankings</h2>
           </div>
+          <span class="meta">Datos de alineaciones e informes registrados</span>
         </div>
-        <div class="position-list">
-          ${Object.entries(positionCounts)
-            .map(([position, count]) => {
-              const percentage = state.players.length ? (count / state.players.length) * 100 : 0;
-              return `
-                <div class="position-stat">
-                  <div><strong>${escapeHtml(position)}</strong><span>${count}</span></div>
-                  <div class="position-track"><span style="width:${percentage}%"></span></div>
-                </div>
-              `;
-            })
-            .join("")}
+        <div class="ranking-cards">
+          ${rankingCards.map((ranking) => renderRankingCard(ranking, playerRows)).join("")}
+        </div>
+      </section>
+
+      <section class="players-statistics-section">
+        <div class="statistics-title-row">
+          <div>
+            <p class="eyebrow">Plantilla 2026</p>
+            <h2>Estadísticas jugadores</h2>
+          </div>
+          <span class="meta">— indica una estadística todavía no registrada</span>
+        </div>
+        <div class="table-panel">
+          <div class="data-table-scroll">
+            <table class="data-table player-statistics-table">
+              <thead>
+                <tr>
+                  <th>Jugador</th>
+                  <th>Alineaciones</th>
+                  <th>Jugados</th>
+                  <th>Participación</th>
+                  <th>Informes</th>
+                  <th>Goles</th>
+                  <th>Asistencias</th>
+                  <th>Amarillas</th>
+                  <th>Rojas</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${playerRows.map(renderPlayerStatisticsRow).join("")}
+              </tbody>
+            </table>
+          </div>
         </div>
       </section>
     </div>
+  `;
+}
+
+function renderTeamSummary(label, value, detail) {
+  return `
+    <article class="team-summary-card">
+      <span>${escapeHtml(label)}</span>
+      <strong>${value}</strong>
+      <small>${escapeHtml(detail)}</small>
+    </article>
+  `;
+}
+
+function renderRankingCard(ranking, playerRows) {
+  const rows = playerRows
+    .slice()
+    .sort((a, b) => b[ranking.key] - a[ranking.key] || a.number - b.number)
+    .slice(0, 5);
+  const leader = rows[0];
+  const photoStyle = leader?.photo ? `style="background-image:url('${escapeAttr(leader.photo)}')"` : "";
+
+  return `
+    <article class="ranking-card">
+      <div class="ranking-hero">
+        <span class="ranking-title">${escapeHtml(ranking.title)}</span>
+        <div class="ranking-watermark">AC</div>
+        ${
+          leader
+            ? `<div class="ranking-leader">
+                <div class="ranking-player-photo" ${photoStyle}>${leader.photo ? "" : initials(leader.name)}</div>
+                <div>
+                  <strong>${escapeHtml(shortName(leader.name))}</strong>
+                  <span>${leader[ranking.key]}${ranking.suffix}</span>
+                </div>
+              </div>`
+            : ""
+        }
+      </div>
+      <ol class="ranking-list">
+        ${rows
+          .map(
+            (playerItem) => `
+              <li>
+                <span>${escapeHtml(playerItem.name)}</span>
+                <strong>${playerItem[ranking.key]}${ranking.suffix}</strong>
+              </li>
+            `
+          )
+          .join("")}
+      </ol>
+    </article>
+  `;
+}
+
+function renderPlayerStatisticsRow(item) {
+  const photoStyle = item.photo ? `style="background-image:url('${escapeAttr(item.photo)}')"` : "";
+  return `
+    <tr>
+      <td class="statistics-player-cell">
+        <div class="statistics-player-photo" ${photoStyle}>${item.photo ? "" : initials(item.name)}</div>
+        <div><strong>${escapeHtml(item.name)}</strong><span>${escapeHtml(item.position)}</span></div>
+      </td>
+      <td>${item.appearances}</td>
+      <td>${item.played}</td>
+      <td>${item.participation}%</td>
+      <td>${item.reports}</td>
+      <td>—</td>
+      <td>—</td>
+      <td>—</td>
+      <td>—</td>
+    </tr>
   `;
 }
 
@@ -1471,6 +1552,27 @@ function calculateTeamStats(matches) {
   });
 
   return stats;
+}
+
+function buildPlayerStatistics() {
+  const totalMatches = state.matches.length;
+  return state.players
+    .map((item) => {
+      const appearances = state.matches.filter((matchItem) => matchItem.lineup?.[item.id]);
+      const played = appearances.filter((matchItem) => Boolean(parseScore(matchItem.score))).length;
+      return {
+        id: item.id,
+        name: item.name,
+        number: item.number,
+        position: item.position,
+        photo: item.photo || "",
+        appearances: appearances.length,
+        played,
+        participation: totalMatches ? Math.round((appearances.length / totalMatches) * 100) : 0,
+        reports: Object.values(item.reports || {}).filter((report) => String(report).trim()).length
+      };
+    })
+    .sort((a, b) => b.appearances - a.appearances || a.number - b.number);
 }
 
 function countPlayersByPosition() {
