@@ -1072,6 +1072,29 @@ button {
   text-transform: uppercase;
 }
 
+.stat-color-badge {
+  width: 10px;
+  height: 14px;
+  display: inline-block;
+  border-radius: 2px;
+  transform: rotate(10deg);
+}
+
+.stat-color-badge.yellow {
+  background: #f1d400;
+}
+
+.stat-color-badge.red {
+  background: #df1533;
+}
+
+.form-section-title {
+  margin: 4px 0 -2px;
+  padding-top: 12px;
+  border-top: 1px solid var(--line);
+  font-size: .9rem;
+}
+
 .rankings-section,
 .players-statistics-section {
   margin-top: 24px;

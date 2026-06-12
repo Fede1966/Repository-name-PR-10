@@ -168,6 +168,14 @@ matchForm.addEventListener("submit", (event) => {
     away: document.querySelector("#match-away").value.trim(),
     status: document.querySelector("#match-status").value,
     score: document.querySelector("#match-score").value.trim(),
+    teamStats: {
+      yellowCards: nonNegativeInteger(document.querySelector("#match-yellow-cards").value),
+      redCards: nonNegativeInteger(document.querySelector("#match-red-cards").value),
+      penaltiesFor: nonNegativeInteger(document.querySelector("#match-penalties-for").value),
+      penaltiesAgainst: nonNegativeInteger(document.querySelector("#match-penalties-against").value),
+      foulsReceived: nonNegativeInteger(document.querySelector("#match-fouls-received").value),
+      foulsCommitted: nonNegativeInteger(document.querySelector("#match-fouls-committed").value)
+    },
     lineup: existing?.lineup || {},
     formation: existing?.formation || DEFAULT_FORMATION,
     plan: existing?.plan || emptyPlan()
@@ -213,6 +221,7 @@ function match(id, round, home, away, date, status, score, teamId = DEFAULT_TEAM
     date,
     status,
     score,
+    teamStats: emptyTeamMatchStats(),
     lineup: defaultLineup(),
     formation: DEFAULT_FORMATION,
     plan: emptyPlan()
@@ -270,6 +279,7 @@ function loadState() {
       matches: saved.matches?.map((item) => ({
         ...item,
         teamId: item.teamId || DEFAULT_TEAM_ID,
+        teamStats: normalizeTeamMatchStats(item.teamStats),
         lineup: item.lineup || {},
         formation: item.formation || DEFAULT_FORMATION,
         plan: { ...emptyPlan(), ...(item.plan || {}) }
@@ -547,6 +557,7 @@ function fromRemoteMatch(item, lineupData, plan) {
     date: item.date || "",
     status: item.status,
     score: item.score || "",
+    teamStats: normalizeTeamMatchStats(lineupData?.teamStats),
     lineup: lineupData?.lineup || {},
     formation: lineupData?.formation || DEFAULT_FORMATION,
     plan: plan || emptyPlan()
@@ -560,7 +571,8 @@ function toRemoteLineup(item) {
       ...(item.lineup || {}),
       [FORMATION_STORAGE_KEY]: item.formation || DEFAULT_FORMATION,
       __teamId: item.teamId || DEFAULT_TEAM_ID,
-      __teamName: teamName(item.teamId)
+      __teamName: teamName(item.teamId),
+      __teamStats: normalizeTeamMatchStats(item.teamStats)
     },
     updated_at: new Date().toISOString()
   };
@@ -571,10 +583,12 @@ function parseRemoteLineup(value) {
   const formation = FORMATIONS[lineup[FORMATION_STORAGE_KEY]] ? lineup[FORMATION_STORAGE_KEY] : DEFAULT_FORMATION;
   const teamId = lineup.__teamId || DEFAULT_TEAM_ID;
   const remoteTeamName = lineup.__teamName || "";
+  const teamStats = normalizeTeamMatchStats(lineup.__teamStats);
   delete lineup[FORMATION_STORAGE_KEY];
   delete lineup.__teamId;
   delete lineup.__teamName;
-  return { lineup, formation, teamId, teamName: remoteTeamName };
+  delete lineup.__teamStats;
+  return { lineup, formation, teamId, teamName: remoteTeamName, teamStats };
 }
 
 function toRemotePlan(item) {
@@ -1276,9 +1290,8 @@ function renderStandings() {
 function renderStatistics() {
   const matches = parsedMatches();
   const teamStats = calculateTeamStats(matches);
+  const extraStats = calculateTeamMatchStats();
   const playerRows = buildPlayerStatistics();
-  const totalLineups = playerRows.reduce((total, playerItem) => total + playerItem.appearances, 0);
-  const totalReports = playerRows.reduce((total, playerItem) => total + playerItem.reports, 0);
   const rankingCards = [
     { title: "Partidos", key: "played", suffix: "" },
     { title: "Minutos", key: "minutes", suffix: "" },
@@ -1304,17 +1317,17 @@ function renderStatistics() {
           [teamStats.goalsFor, "marcados"],
           [teamStats.goalsAgainst, "encajados"]
         ])}
-        ${renderTeamSummary("Puntos", "◇", teamStats.points, [
-          [teamStats.points, "conseguidos"],
-          [formatGoalDifference(teamStats.goalsFor - teamStats.goalsAgainst), "diferencia de goles"]
+        ${renderTeamSummary("Tarjetas", "▱", 0, [
+          [extraStats.yellowCards, "amarillas", "yellow"],
+          [extraStats.redCards, "rojas", "red"]
         ])}
-        ${renderTeamSummary("Alineaciones", "◎", totalLineups, [
-          [totalLineups, "registradas"],
-          [activePlayers().length, "jugadores"]
+        ${renderTeamSummary("Penaltis", "◎", 0, [
+          [extraStats.penaltiesFor, "a favor"],
+          [extraStats.penaltiesAgainst, "en contra"]
         ])}
-        ${renderTeamSummary("Informes", "▤", totalReports, [
-          [totalReports, "guardados"],
-          [activePlayers().length, "jugadores disponibles"]
+        ${renderTeamSummary("Faltas", "⌁", 0, [
+          [extraStats.foulsReceived, "recibidas"],
+          [extraStats.foulsCommitted, "cometidas"]
         ])}
       </section>
 
@@ -1381,10 +1394,11 @@ function renderTeamSummary(label, icon, value, details, featured = false) {
         <div class="team-summary-details">
           ${details
             .map(
-              ([number, text]) => `
+              ([number, text, badge]) => `
                 <div>
                   <strong>${number}</strong>
                   <span>${escapeHtml(text)}</span>
+                  ${badge ? `<i class="stat-color-badge ${badge}" aria-hidden="true"></i>` : ""}
                 </div>
               `
             )
@@ -1701,6 +1715,13 @@ function openMatchDialog(id) {
   document.querySelector("#match-away").value = item?.away || "";
   document.querySelector("#match-status").value = item?.status || "Preparación";
   document.querySelector("#match-score").value = item?.score || "";
+  const teamStats = normalizeTeamMatchStats(item?.teamStats);
+  document.querySelector("#match-yellow-cards").value = teamStats.yellowCards;
+  document.querySelector("#match-red-cards").value = teamStats.redCards;
+  document.querySelector("#match-penalties-for").value = teamStats.penaltiesFor;
+  document.querySelector("#match-penalties-against").value = teamStats.penaltiesAgainst;
+  document.querySelector("#match-fouls-received").value = teamStats.foulsReceived;
+  document.querySelector("#match-fouls-committed").value = teamStats.foulsCommitted;
   matchDialog.showModal();
 }
 
@@ -1863,6 +1884,36 @@ function emptyPlayerReport() {
     shotsOnTarget: 0,
     goalPasses: 0
   };
+}
+
+function emptyTeamMatchStats() {
+  return {
+    yellowCards: 0,
+    redCards: 0,
+    penaltiesFor: 0,
+    penaltiesAgainst: 0,
+    foulsReceived: 0,
+    foulsCommitted: 0
+  };
+}
+
+function normalizeTeamMatchStats(value) {
+  return Object.fromEntries(
+    Object.keys(emptyTeamMatchStats()).map((key) => [key, nonNegativeInteger(value?.[key])])
+  );
+}
+
+function calculateTeamMatchStats() {
+  return activeMatches().reduce(
+    (totals, item) => {
+      const stats = normalizeTeamMatchStats(item.teamStats);
+      Object.keys(totals).forEach((key) => {
+        totals[key] += stats[key];
+      });
+      return totals;
+    },
+    emptyTeamMatchStats()
+  );
 }
 
 function nonNegativeInteger(value) {

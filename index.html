@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Athletic Club | Gestión técnica</title>
-    <link rel="stylesheet" href="styles.css?v=20260612-14" />
+    <link rel="stylesheet" href="styles.css?v=20260612-15" />
   </head>
   <body>
     <div class="app-shell">
@@ -154,6 +154,37 @@
             <input id="match-score" maxlength="12" placeholder="0-0" />
           </label>
         </div>
+        <h3 class="form-section-title">Estadísticas del equipo</h3>
+        <div class="form-grid">
+          <label>
+            Tarjetas amarillas
+            <input id="match-yellow-cards" type="number" min="0" value="0" />
+          </label>
+          <label>
+            Tarjetas rojas
+            <input id="match-red-cards" type="number" min="0" value="0" />
+          </label>
+        </div>
+        <div class="form-grid">
+          <label>
+            Penaltis a favor
+            <input id="match-penalties-for" type="number" min="0" value="0" />
+          </label>
+          <label>
+            Penaltis en contra
+            <input id="match-penalties-against" type="number" min="0" value="0" />
+          </label>
+        </div>
+        <div class="form-grid">
+          <label>
+            Faltas recibidas
+            <input id="match-fouls-received" type="number" min="0" value="0" />
+          </label>
+          <label>
+            Faltas cometidas
+            <input id="match-fouls-committed" type="number" min="0" value="0" />
+          </label>
+        </div>
         <div class="modal-actions">
           <button class="secondary-button" value="cancel" type="submit">Cancelar</button>
           <button class="primary-button" id="save-match-button" value="default" type="submit">Guardar</button>
@@ -161,6 +192,6 @@
       </form>
     </dialog>
 
-    <script src="app.js?v=20260612-14"></script>
+    <script src="app.js?v=20260612-15"></script>
   </body>
 </html>
