@@ -746,7 +746,8 @@ function renderPlayerStatistics(item, body) {
         ${renderMetric("Partidos jugados", playedAppearances.length)}
         ${renderMetric("Minutos jugados", totals.minutes)}
         ${renderMetric("Goles", totals.goals)}
-        ${renderMetric("Asistencias", totals.assists)}
+        ${renderMetric("Asistencias de gol", totals.assists)}
+        ${renderMetric("Tiros a puerta", totals.shotsOnTarget)}
         ${renderMetric("Pases de gol", totals.goalPasses)}
         ${renderMetric("Pases correctos", totals.completedPasses)}
         ${renderMetric("Pérdidas", totals.losses)}
@@ -837,7 +838,8 @@ function renderPlayerReports(item, body) {
                         ${renderReportStatInput(matchItem.id, "recoveries", "Recuperaciones", report.recoveries)}
                         ${renderReportStatInput(matchItem.id, "minutes", "Minutos jugados", report.minutes, 130)}
                         ${renderReportStatInput(matchItem.id, "goals", "Goles", report.goals)}
-                        ${renderReportStatInput(matchItem.id, "assists", "Asistencias", report.assists)}
+                        ${renderReportStatInput(matchItem.id, "assists", "Asistencias de gol", report.assists)}
+                        ${renderReportStatInput(matchItem.id, "shotsOnTarget", "Tiros a puerta", report.shotsOnTarget)}
                         ${renderReportStatInput(matchItem.id, "goalPasses", "Pases de gol", report.goalPasses)}
                         <label>
                           Vídeo de YouTube
@@ -1081,10 +1083,12 @@ function renderStatistics() {
   const totalLineups = playerRows.reduce((total, playerItem) => total + playerItem.appearances, 0);
   const totalReports = playerRows.reduce((total, playerItem) => total + playerItem.reports, 0);
   const rankingCards = [
-    { title: "Alineaciones", key: "appearances", suffix: "" },
-    { title: "Partidos jugados", key: "played", suffix: "" },
+    { title: "Partidos", key: "played", suffix: "" },
     { title: "Minutos", key: "minutes", suffix: "" },
-    { title: "Goles", key: "goals", suffix: "" }
+    { title: "Goles", key: "goals", suffix: "" },
+    { title: "Asistencias de gol", key: "assists", suffix: "" },
+    { title: "Tiros a puerta", key: "shotsOnTarget", suffix: "" },
+    { title: "Recuperaciones", key: "recoveries", suffix: "" }
   ];
 
   views.statistics.innerHTML = `
@@ -1132,7 +1136,8 @@ function renderStatistics() {
                   <th>Jugados</th>
                   <th>Minutos</th>
                   <th>Goles</th>
-                  <th>Asistencias</th>
+                  <th>Asistencias de gol</th>
+                  <th>Tiros a puerta</th>
                   <th>Pases de gol</th>
                   <th>Pases correctos</th>
                   <th>Pérdidas</th>
@@ -1214,6 +1219,7 @@ function renderPlayerStatisticsRow(item) {
       <td>${item.minutes}</td>
       <td>${item.goals}</td>
       <td>${item.assists}</td>
+      <td>${item.shotsOnTarget}</td>
       <td>${item.goalPasses}</td>
       <td>${item.completedPasses}</td>
       <td>${item.losses}</td>
@@ -1603,6 +1609,7 @@ function normalizePlayerReports(reports) {
           recoveries: nonNegativeInteger(value?.recoveries),
           goals: nonNegativeInteger(value?.goals),
           assists: nonNegativeInteger(value?.assists),
+          shotsOnTarget: nonNegativeInteger(value?.shotsOnTarget),
           goalPasses: nonNegativeInteger(value?.goalPasses)
         }
       ];
@@ -1620,6 +1627,7 @@ function emptyPlayerReport() {
     recoveries: 0,
     goals: 0,
     assists: 0,
+    shotsOnTarget: 0,
     goalPasses: 0
   };
 }
@@ -1641,6 +1649,7 @@ function playerReport(item, matchId) {
     recoveries: nonNegativeInteger(value?.recoveries),
     goals: nonNegativeInteger(value?.goals),
     assists: nonNegativeInteger(value?.assists),
+    shotsOnTarget: nonNegativeInteger(value?.shotsOnTarget),
     goalPasses: nonNegativeInteger(value?.goalPasses)
   };
 }
@@ -1656,7 +1665,7 @@ function playerMinutesPlayed(item) {
 }
 
 function playerReportTotals(item) {
-  const keys = ["minutes", "completedPasses", "losses", "recoveries", "goals", "assists", "goalPasses"];
+  const keys = ["minutes", "completedPasses", "losses", "recoveries", "goals", "assists", "shotsOnTarget", "goalPasses"];
   return state.matches.reduce(
     (totals, matchItem) => {
       const report = playerReport(item, matchItem.id);
@@ -1679,6 +1688,7 @@ function playerReportHasData(report) {
       report.recoveries ||
       report.goals ||
       report.assists ||
+      report.shotsOnTarget ||
       report.goalPasses
   );
 }
@@ -1786,7 +1796,8 @@ async function downloadPlayerPdf(item) {
           ${renderPdfMetric("Partidos jugados", appearances.filter((matchItem) => parseScore(matchItem.score)).length)}
           ${renderPdfMetric("Minutos jugados", totals.minutes)}
           ${renderPdfMetric("Goles", totals.goals)}
-          ${renderPdfMetric("Asistencias", totals.assists)}
+          ${renderPdfMetric("Asistencias de gol", totals.assists)}
+          ${renderPdfMetric("Tiros a puerta", totals.shotsOnTarget)}
           ${renderPdfMetric("Pases de gol", totals.goalPasses)}
           ${renderPdfMetric("Pases correctos", totals.completedPasses)}
           ${renderPdfMetric("Pérdidas", totals.losses)}
@@ -1808,7 +1819,8 @@ async function downloadPlayerPdf(item) {
                         ${renderPdfReportStat("Pérdidas", report.losses)}
                         ${renderPdfReportStat("Recuperaciones", report.recoveries)}
                         ${renderPdfReportStat("Goles", report.goals)}
-                        ${renderPdfReportStat("Asistencias", report.assists)}
+                        ${renderPdfReportStat("Asistencias de gol", report.assists)}
+                        ${renderPdfReportStat("Tiros a puerta", report.shotsOnTarget)}
                         ${renderPdfReportStat("Pases de gol", report.goalPasses)}
                       </div>
                       ${report.text ? `<p>${escapeHtml(report.text)}</p>` : ""}

@@ -791,7 +791,7 @@ button {
 
 .ranking-cards {
   display: grid;
-  grid-template-columns: repeat(4, minmax(260px, 1fr));
+  grid-template-columns: repeat(6, minmax(260px, 1fr));
   gap: 2px;
   overflow-x: auto;
   scroll-snap-type: x proximity;
@@ -1487,7 +1487,7 @@ button:focus-visible {
   }
 
   .ranking-cards {
-    grid-template-columns: repeat(4, minmax(280px, 82vw));
+    grid-template-columns: repeat(6, minmax(280px, 82vw));
   }
 
   .player-profile-card {
