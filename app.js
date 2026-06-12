@@ -173,8 +173,8 @@ matchForm.addEventListener("submit", (event) => {
       redCards: nonNegativeInteger(document.querySelector("#match-red-cards").value),
       penaltiesFor: nonNegativeInteger(document.querySelector("#match-penalties-for").value),
       penaltiesAgainst: nonNegativeInteger(document.querySelector("#match-penalties-against").value),
-      foulsReceived: nonNegativeInteger(document.querySelector("#match-fouls-received").value),
-      foulsCommitted: nonNegativeInteger(document.querySelector("#match-fouls-committed").value)
+      chancesCreated: nonNegativeInteger(document.querySelector("#match-chances-created").value),
+      chancesAgainst: nonNegativeInteger(document.querySelector("#match-chances-against").value)
     },
     lineup: existing?.lineup || {},
     formation: existing?.formation || DEFAULT_FORMATION,
@@ -1325,9 +1325,9 @@ function renderStatistics() {
           [extraStats.penaltiesFor, "a favor"],
           [extraStats.penaltiesAgainst, "en contra"]
         ])}
-        ${renderTeamSummary("Faltas", "⌁", 0, [
-          [extraStats.foulsReceived, "recibidas"],
-          [extraStats.foulsCommitted, "cometidas"]
+        ${renderTeamSummary("Ocasiones de gol", "⌁", 0, [
+          [extraStats.chancesCreated, "generadas"],
+          [extraStats.chancesAgainst, "recibidas"]
         ])}
       </section>
 
@@ -1720,8 +1720,8 @@ function openMatchDialog(id) {
   document.querySelector("#match-red-cards").value = teamStats.redCards;
   document.querySelector("#match-penalties-for").value = teamStats.penaltiesFor;
   document.querySelector("#match-penalties-against").value = teamStats.penaltiesAgainst;
-  document.querySelector("#match-fouls-received").value = teamStats.foulsReceived;
-  document.querySelector("#match-fouls-committed").value = teamStats.foulsCommitted;
+  document.querySelector("#match-chances-created").value = teamStats.chancesCreated;
+  document.querySelector("#match-chances-against").value = teamStats.chancesAgainst;
   matchDialog.showModal();
 }
 
@@ -1892,15 +1892,20 @@ function emptyTeamMatchStats() {
     redCards: 0,
     penaltiesFor: 0,
     penaltiesAgainst: 0,
-    foulsReceived: 0,
-    foulsCommitted: 0
+    chancesCreated: 0,
+    chancesAgainst: 0
   };
 }
 
 function normalizeTeamMatchStats(value) {
-  return Object.fromEntries(
-    Object.keys(emptyTeamMatchStats()).map((key) => [key, nonNegativeInteger(value?.[key])])
-  );
+  return {
+    yellowCards: nonNegativeInteger(value?.yellowCards),
+    redCards: nonNegativeInteger(value?.redCards),
+    penaltiesFor: nonNegativeInteger(value?.penaltiesFor),
+    penaltiesAgainst: nonNegativeInteger(value?.penaltiesAgainst),
+    chancesCreated: nonNegativeInteger(value?.chancesCreated ?? value?.foulsCommitted),
+    chancesAgainst: nonNegativeInteger(value?.chancesAgainst ?? value?.foulsReceived)
+  };
 }
 
 function calculateTeamMatchStats() {
