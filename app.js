@@ -60,8 +60,8 @@ let isPullingRemote = false;
 const views = {
   squad: document.querySelector("#squad-view"),
   matches: document.querySelector("#matches-view"),
-  lineups: document.querySelector("#lineups-view"),
-  gameplan: document.querySelector("#gameplan-view"),
+  standings: document.querySelector("#standings-view"),
+  statistics: document.querySelector("#statistics-view"),
   detail: document.querySelector("#match-detail-view")
 };
 
@@ -202,9 +202,11 @@ function loadState() {
   try {
     const saved = JSON.parse(localStorage.getItem(STORAGE_KEY));
     if (!saved) return structuredClone(initialState);
+    const activeView = ["lineups", "gameplan"].includes(saved.activeView) ? "matches" : saved.activeView;
     return {
       ...structuredClone(initialState),
       ...saved,
+      activeView,
       players: saved.players?.map((item) => ({
         ...item,
         laterality: item.laterality || "Diestro",
@@ -513,13 +515,13 @@ function render() {
   else views[state.activeView].classList.add("active");
 
   contextActionButton.textContent = state.activeView === "matches" ? "Añadir partido" : "Añadir jugador";
-  contextActionButton.style.display = ["detail", "lineups", "gameplan"].includes(state.activeView) ? "none" : "inline-flex";
+  contextActionButton.style.display = ["detail", "standings", "statistics"].includes(state.activeView) ? "none" : "inline-flex";
   pageTitle.textContent = pageTitleForView(state.activeView);
 
   renderSquad();
   renderMatches();
-  renderLineupsPage();
-  renderGameplanPage();
+  renderStandings();
+  renderStatistics();
   renderMatchDetail();
 }
 
@@ -531,8 +533,8 @@ function pageTitleForView(view) {
   const titles = {
     squad: "Plantilla",
     matches: "Partidos",
-    lineups: "Alineaciones",
-    gameplan: "Plan de partido",
+    standings: "Clasificación",
+    statistics: "Estadísticas",
     detail: "Detalle de partido"
   };
   return titles[view] || "Plantilla";
@@ -662,34 +664,128 @@ function renderMatchDetail() {
   else renderLineup(item, body);
 }
 
-function renderLineupsPage() {
-  const item = selectedMatch();
-  if (!item) {
-    views.lineups.innerHTML = `<div class="empty-state">Crea un partido para preparar una alineación.</div>`;
-    return;
-  }
+function renderStandings() {
+  const table = buildStandings();
+  const playedMatches = parsedMatches().length;
 
-  views.lineups.innerHTML = `
-    ${renderMatchSelector("lineup-match-selector")}
-    <div id="lineups-body"></div>
+  views.standings.innerHTML = `
+    <div class="section-intro">
+      <div>
+        <h2>Clasificación</h2>
+        <p class="meta">Calculada con los resultados registrados en Partidos.</p>
+      </div>
+      <span class="tag">${playedMatches} ${playedMatches === 1 ? "partido computado" : "partidos computados"}</span>
+    </div>
+    ${
+      table.length
+        ? `<div class="table-panel">
+            <div class="data-table-scroll">
+              <table class="data-table standings-table">
+                <thead>
+                  <tr>
+                    <th>Pos.</th>
+                    <th>Equipo</th>
+                    <th>PJ</th>
+                    <th>G</th>
+                    <th>E</th>
+                    <th>P</th>
+                    <th>GF</th>
+                    <th>GC</th>
+                    <th>DG</th>
+                    <th>Pts</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  ${table
+                    .map(
+                      (team, index) => `
+                        <tr class="${team.name === TEAM_NAME ? "highlight-row" : ""}">
+                          <td><strong>${index + 1}</strong></td>
+                          <td class="team-cell">${escapeHtml(team.name)}</td>
+                          <td>${team.played}</td>
+                          <td>${team.won}</td>
+                          <td>${team.drawn}</td>
+                          <td>${team.lost}</td>
+                          <td>${team.goalsFor}</td>
+                          <td>${team.goalsAgainst}</td>
+                          <td>${formatGoalDifference(team.goalDifference)}</td>
+                          <td><strong>${team.points}</strong></td>
+                        </tr>
+                      `
+                    )
+                    .join("")}
+                </tbody>
+              </table>
+            </div>
+          </div>`
+        : `<div class="empty-state">Añade resultados con formato 2-1 en Partidos para generar la clasificación.</div>`
+    }
   `;
-  bindMatchSelector(views.lineups.querySelector("#lineup-match-selector"));
-  renderLineup(item, views.lineups.querySelector("#lineups-body"));
 }
 
-function renderGameplanPage() {
-  const item = selectedMatch();
-  if (!item) {
-    views.gameplan.innerHTML = `<div class="empty-state">Crea un partido para preparar el plan de partido.</div>`;
-    return;
-  }
+function renderStatistics() {
+  const matches = parsedMatches();
+  const teamStats = calculateTeamStats(matches);
+  const positionCounts = countPlayersByPosition();
+  const resultTotal = teamStats.won + teamStats.drawn + teamStats.lost;
 
-  views.gameplan.innerHTML = `
-    ${renderMatchSelector("gameplan-match-selector")}
-    <div id="gameplan-body"></div>
+  views.statistics.innerHTML = `
+    <div class="statistics-grid">
+      <section class="panel statistics-section">
+        <div class="section-intro">
+          <div>
+            <h2>Rendimiento del equipo</h2>
+            <p class="meta">Resumen de los resultados registrados.</p>
+          </div>
+        </div>
+        <div class="metrics-grid">
+          ${renderMetric("Partidos", teamStats.played)}
+          ${renderMetric("Victorias", teamStats.won)}
+          ${renderMetric("Empates", teamStats.drawn)}
+          ${renderMetric("Derrotas", teamStats.lost)}
+          ${renderMetric("Goles a favor", teamStats.goalsFor)}
+          ${renderMetric("Goles en contra", teamStats.goalsAgainst)}
+          ${renderMetric("Diferencia", formatGoalDifference(teamStats.goalsFor - teamStats.goalsAgainst))}
+          ${renderMetric("Puntos", teamStats.points)}
+        </div>
+        ${
+          resultTotal
+            ? `<div class="result-bar" aria-label="Distribución de resultados">
+                <span class="result-wins" style="width:${(teamStats.won / resultTotal) * 100}%"></span>
+                <span class="result-draws" style="width:${(teamStats.drawn / resultTotal) * 100}%"></span>
+                <span class="result-losses" style="width:${(teamStats.lost / resultTotal) * 100}%"></span>
+              </div>
+              <div class="result-legend">
+                <span><i class="legend-dot wins-dot"></i>Victorias</span>
+                <span><i class="legend-dot draws-dot"></i>Empates</span>
+                <span><i class="legend-dot losses-dot"></i>Derrotas</span>
+              </div>`
+            : `<p class="empty-inline">Añade resultados para ver el rendimiento.</p>`
+        }
+      </section>
+      <section class="panel statistics-section">
+        <div class="section-intro">
+          <div>
+            <h2>Composición de la plantilla</h2>
+            <p class="meta">${state.players.length} jugadores registrados.</p>
+          </div>
+        </div>
+        <div class="position-list">
+          ${Object.entries(positionCounts)
+            .map(([position, count]) => {
+              const percentage = state.players.length ? (count / state.players.length) * 100 : 0;
+              return `
+                <div class="position-stat">
+                  <div><strong>${escapeHtml(position)}</strong><span>${count}</span></div>
+                  <div class="position-track"><span style="width:${percentage}%"></span></div>
+                </div>
+              `;
+            })
+            .join("")}
+        </div>
+      </section>
+    </div>
   `;
-  bindMatchSelector(views.gameplan.querySelector("#gameplan-match-selector"));
-  renderPlan(item, views.gameplan.querySelector("#gameplan-body"));
 }
 
 function renderLineup(item, body) {
@@ -844,37 +940,6 @@ function renderPlan(item, body) {
       saveState();
       render();
     });
-  });
-}
-
-function renderMatchSelector(id) {
-  const item = selectedMatch();
-  return `
-    <div class="page-context panel">
-      <label>
-        Partido
-        <select id="${id}">
-          ${state.matches
-            .slice()
-            .sort((a, b) => a.round - b.round)
-            .map((matchItem) => `
-              <option value="${matchItem.id}" ${matchItem.id === item?.id ? "selected" : ""}>
-                Jornada ${matchItem.round}: ${escapeHtml(matchItem.home)} vs ${escapeHtml(matchItem.away)}
-              </option>
-            `)
-            .join("")}
-        </select>
-      </label>
-      <div class="meta">${item?.date ? formatDate(item.date) : "Fecha pendiente"} · ${escapeHtml(item?.status || "")}</div>
-    </div>
-  `;
-}
-
-function bindMatchSelector(selector) {
-  selector.addEventListener("change", () => {
-    state.selectedMatchId = selector.value;
-    saveState();
-    render();
   });
 }
 
@@ -1057,6 +1122,132 @@ function applyFormation(item, formationId) {
   playerIds.forEach((playerId, index) => {
     item.lineup[playerId] = { ...formation.slots[index] };
   });
+}
+
+function parsedMatches() {
+  return state.matches.flatMap((item) => {
+    const score = parseScore(item.score);
+    return score ? [{ ...item, homeGoals: score.home, awayGoals: score.away }] : [];
+  });
+}
+
+function parseScore(value) {
+  const match = String(value || "").trim().match(/^(\d+)\s*[-:]\s*(\d+)$/);
+  if (!match) return null;
+  return { home: Number(match[1]), away: Number(match[2]) };
+}
+
+function buildStandings() {
+  const teams = new Map();
+  const getTeam = (name) => {
+    if (!teams.has(name)) {
+      teams.set(name, {
+        name,
+        played: 0,
+        won: 0,
+        drawn: 0,
+        lost: 0,
+        goalsFor: 0,
+        goalsAgainst: 0,
+        goalDifference: 0,
+        points: 0
+      });
+    }
+    return teams.get(name);
+  };
+
+  parsedMatches().forEach((item) => {
+    const home = getTeam(item.home);
+    const away = getTeam(item.away);
+    home.played += 1;
+    away.played += 1;
+    home.goalsFor += item.homeGoals;
+    home.goalsAgainst += item.awayGoals;
+    away.goalsFor += item.awayGoals;
+    away.goalsAgainst += item.homeGoals;
+
+    if (item.homeGoals > item.awayGoals) {
+      home.won += 1;
+      home.points += 3;
+      away.lost += 1;
+    } else if (item.homeGoals < item.awayGoals) {
+      away.won += 1;
+      away.points += 3;
+      home.lost += 1;
+    } else {
+      home.drawn += 1;
+      away.drawn += 1;
+      home.points += 1;
+      away.points += 1;
+    }
+  });
+
+  return [...teams.values()]
+    .map((team) => ({ ...team, goalDifference: team.goalsFor - team.goalsAgainst }))
+    .sort(
+      (a, b) =>
+        b.points - a.points ||
+        b.goalDifference - a.goalDifference ||
+        b.goalsFor - a.goalsFor ||
+        a.name.localeCompare(b.name, "es")
+    );
+}
+
+function calculateTeamStats(matches) {
+  const stats = {
+    played: 0,
+    won: 0,
+    drawn: 0,
+    lost: 0,
+    goalsFor: 0,
+    goalsAgainst: 0,
+    points: 0
+  };
+
+  matches.forEach((item) => {
+    const isHome = item.home === TEAM_NAME;
+    const isAway = item.away === TEAM_NAME;
+    if (!isHome && !isAway) return;
+    const goalsFor = isHome ? item.homeGoals : item.awayGoals;
+    const goalsAgainst = isHome ? item.awayGoals : item.homeGoals;
+    stats.played += 1;
+    stats.goalsFor += goalsFor;
+    stats.goalsAgainst += goalsAgainst;
+    if (goalsFor > goalsAgainst) {
+      stats.won += 1;
+      stats.points += 3;
+    } else if (goalsFor < goalsAgainst) {
+      stats.lost += 1;
+    } else {
+      stats.drawn += 1;
+      stats.points += 1;
+    }
+  });
+
+  return stats;
+}
+
+function countPlayersByPosition() {
+  const positions = ["Portero", "Defensa", "Centrocampista", "Delantero"];
+  return Object.fromEntries(
+    positions.map((position) => [
+      position,
+      state.players.filter((playerItem) => playerItem.position === position).length
+    ])
+  );
+}
+
+function renderMetric(label, value) {
+  return `
+    <div class="metric-card">
+      <span>${escapeHtml(label)}</span>
+      <strong>${value}</strong>
+    </div>
+  `;
+}
+
+function formatGoalDifference(value) {
+  return value > 0 ? `+${value}` : String(value);
 }
 
 function initials(name) {
