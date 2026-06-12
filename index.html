@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Athletic Club | Gestión técnica</title>
-    <link rel="stylesheet" href="styles.css?v=20260612-12" />
+    <link rel="stylesheet" href="styles.css?v=20260612-13" />
   </head>
   <body>
     <div class="app-shell">
@@ -17,7 +17,7 @@
           </div>
         </div>
         <nav class="nav-tabs" aria-label="Navegación principal">
-          <button class="nav-button active" data-view="squad">Plantilla</button>
+          <button class="nav-button active" data-view="squad">Equipos</button>
           <button class="nav-button" data-view="matches">Partidos</button>
           <button class="nav-button" data-view="standings">Clasificación</button>
           <button class="nav-button" data-view="statistics">Estadísticas</button>
@@ -28,7 +28,7 @@
         <section class="toolbar">
           <div>
             <p class="eyebrow">Temporada 2026</p>
-            <h1 id="page-title">Plantilla</h1>
+            <h1 id="page-title">Equipos</h1>
           </div>
           <div class="toolbar-actions">
             <button class="primary-button" id="context-action-button" type="button">Añadir jugador</button>
@@ -43,6 +43,23 @@
         <section id="match-detail-view" class="view"></section>
       </main>
     </div>
+
+    <dialog id="team-dialog" class="modal">
+      <form method="dialog" id="team-form" class="modal-card">
+        <div class="modal-header">
+          <h2>Nuevo equipo</h2>
+          <button class="icon-button" value="cancel" type="submit" aria-label="Cerrar">×</button>
+        </div>
+        <label>
+          Nombre del equipo
+          <input id="team-name" required maxlength="60" placeholder="Ejemplo: Athletic Club Juvenil A" />
+        </label>
+        <div class="modal-actions">
+          <button class="secondary-button" value="cancel" type="submit">Cancelar</button>
+          <button class="primary-button" value="default" type="submit">Crear equipo</button>
+        </div>
+      </form>
+    </dialog>
 
     <dialog id="player-dialog" class="modal">
       <form method="dialog" id="player-form" class="modal-card">
@@ -144,6 +161,6 @@
       </form>
     </dialog>
 
-    <script src="app.js?v=20260612-12"></script>
+    <script src="app.js?v=20260612-13"></script>
   </body>
 </html>

@@ -207,6 +207,55 @@ button {
   margin-bottom: 18px;
 }
 
+.team-switcher {
+  display: grid;
+  grid-template-columns: minmax(220px, 1fr) minmax(220px, 1fr) auto;
+  align-items: end;
+  gap: 18px;
+  margin-bottom: 18px;
+  padding: 18px;
+}
+
+.team-switcher label {
+  display: grid;
+  gap: 7px;
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.team-switcher select {
+  min-height: 44px;
+  color: var(--ink);
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 0 12px;
+  text-transform: none;
+}
+
+.team-switcher-summary {
+  display: grid;
+  gap: 4px;
+  align-self: center;
+}
+
+.team-switcher-summary strong {
+  font-size: 1.1rem;
+}
+
+.active-team-context {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+.active-team-context .eyebrow {
+  margin: 0;
+}
+
 .stat,
 .player-card,
 .match-card,
@@ -1651,6 +1700,14 @@ button:focus-visible {
 }
 
 @media (max-width: 920px) {
+  .team-switcher {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .team-switcher .primary-button {
+    grid-column: 1 / -1;
+  }
+
   .app-shell,
   .lineup-layout,
   .plan-grid,
@@ -1759,6 +1816,15 @@ button:focus-visible {
 }
 
 @media (max-width: 560px) {
+  .team-switcher {
+    grid-template-columns: 1fr;
+    align-items: stretch;
+  }
+
+  .team-switcher .primary-button {
+    grid-column: auto;
+  }
+
   .form-grid,
   .toolbar-actions,
   .detail-actions {

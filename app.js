@@ -4,6 +4,7 @@ const SUPABASE_ANON_KEY =
   "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZobW55am1obm9icW14Z3Vsc2FnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA2NzEyNTMsImV4cCI6MjA5NjI0NzI1M30.Li4R65j3sGHSrIdt7tiubHNDgKrzjXDqcT92BCqZfDA";
 const PLAYER_PHOTOS_BUCKET = "player-photos";
 const TEAM_NAME = "Athletic Club";
+const DEFAULT_TEAM_ID = "athletic-club";
 const DEFAULT_FORMATION = "1442";
 const FORMATION_STORAGE_KEY = "__formation";
 const FORMATIONS = {
@@ -26,6 +27,8 @@ const FORMATIONS = {
 };
 
 const initialState = {
+  teams: [{ id: DEFAULT_TEAM_ID, name: TEAM_NAME }],
+  activeTeamId: DEFAULT_TEAM_ID,
   players: [
     player("p1", "Unai Simón", 1, "1997-06-11", "Portero", "Diestro"),
     player("p2", "Aitor Paredes", 4, "2000-04-29", "Defensa", "Diestro"),
@@ -75,6 +78,8 @@ const playerDialog = document.querySelector("#player-dialog");
 const playerForm = document.querySelector("#player-form");
 const matchDialog = document.querySelector("#match-dialog");
 const matchForm = document.querySelector("#match-form");
+const teamDialog = document.querySelector("#team-dialog");
+const teamForm = document.querySelector("#team-form");
 const playerPhotoInput = document.querySelector("#player-photo");
 const playerPhotoFileInput = document.querySelector("#player-photo-file");
 const playerPhotoPreview = document.querySelector("#player-photo-preview");
@@ -82,6 +87,22 @@ const deletePlayerModalButton = document.querySelector("#delete-player-modal-but
 
 document.querySelectorAll(".nav-button").forEach((button) => {
   button.addEventListener("click", () => setView(button.dataset.view));
+});
+
+teamForm.addEventListener("submit", (event) => {
+  if (event.submitter?.value === "cancel") return;
+  event.preventDefault();
+  const name = document.querySelector("#team-name").value.trim();
+  if (!name) return;
+  const id = uniqueTeamId(name);
+  state.teams.push({ id, name });
+  state.activeTeamId = id;
+  state.selectedPlayerId = "";
+  state.selectedMatchId = "";
+  document.querySelector("#team-name").value = "";
+  saveState();
+  teamDialog.close();
+  render();
 });
 
 contextActionButton.addEventListener("click", () => {
@@ -111,6 +132,7 @@ playerForm.addEventListener("submit", async (event) => {
   const uploadedPhoto = photoFile ? await savePlayerPhoto(photoFile, playerId) : null;
   const formPlayer = {
     id: playerId,
+    teamId: state.activeTeamId,
     name: document.querySelector("#player-name").value.trim(),
     number: Number(document.querySelector("#player-number").value),
     birthdate: document.querySelector("#player-birthdate").value,
@@ -139,6 +161,7 @@ matchForm.addEventListener("submit", (event) => {
   const existing = state.matches.find((item) => item.id === id);
   const formMatch = {
     id,
+    teamId: state.activeTeamId,
     round: Number(document.querySelector("#match-round").value),
     date: document.querySelector("#match-date").value,
     home: document.querySelector("#match-home").value.trim(),
@@ -162,9 +185,10 @@ matchForm.addEventListener("submit", (event) => {
 render();
 initializeSupabase();
 
-function player(id, name, number, birthdate, position, laterality = "Diestro") {
+function player(id, name, number, birthdate, position, laterality = "Diestro", teamId = DEFAULT_TEAM_ID) {
   return {
     id,
+    teamId,
     name,
     number,
     birthdate,
@@ -179,9 +203,10 @@ function player(id, name, number, birthdate, position, laterality = "Diestro") {
   };
 }
 
-function match(id, round, home, away, date, status, score) {
+function match(id, round, home, away, date, status, score, teamId = DEFAULT_TEAM_ID) {
   return {
     id,
+    teamId,
     round,
     home,
     away,
@@ -224,12 +249,17 @@ function loadState() {
     const saved = JSON.parse(localStorage.getItem(STORAGE_KEY));
     if (!saved) return structuredClone(initialState);
     const activeView = ["lineups", "gameplan"].includes(saved.activeView) ? "matches" : saved.activeView;
+    const teams = saved.teams?.length ? saved.teams : structuredClone(initialState.teams);
+    const activeTeamId = teams.some((item) => item.id === saved.activeTeamId) ? saved.activeTeamId : teams[0].id;
     return {
       ...structuredClone(initialState),
       ...saved,
       activeView,
+      teams,
+      activeTeamId,
       players: saved.players?.map((item) => ({
         ...item,
+        teamId: item.teamId || DEFAULT_TEAM_ID,
         laterality: item.laterality || "Diestro",
         photoPath: item.photoPath || item.photo_path || "",
         description: item.description || "",
@@ -239,6 +269,7 @@ function loadState() {
       })) || structuredClone(initialState.players),
       matches: saved.matches?.map((item) => ({
         ...item,
+        teamId: item.teamId || DEFAULT_TEAM_ID,
         lineup: item.lineup || {},
         formation: item.formation || DEFAULT_FORMATION,
         plan: { ...emptyPlan(), ...(item.plan || {}) }
@@ -313,6 +344,7 @@ async function pullRemoteState() {
     } else if (!state.matches.length) {
       state.matches = structuredClone(initialState.matches);
     }
+    syncTeamsFromData();
     state.selectedMatchId = selectedMatch()?.id || "";
     localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
     render();
@@ -458,6 +490,8 @@ function toRemotePlayer(item) {
     ...(supportsRemotePlayerProfiles
       ? {
           profile_data: {
+            teamId: item.teamId || DEFAULT_TEAM_ID,
+            teamName: teamName(item.teamId),
             description: item.description || "",
             career: item.career || "",
             ratings: normalizePlayerRatings(item.ratings),
@@ -473,6 +507,8 @@ function fromRemotePlayer(item, localItem = {}) {
   const remoteProfile = item.profile_data || {};
   return {
     id: item.id,
+    teamId: remoteProfile.teamId || localItem.teamId || DEFAULT_TEAM_ID,
+    teamName: remoteProfile.teamName || localItem.teamName || "",
     name: item.name,
     number: item.number,
     birthdate: item.birthdate,
@@ -503,6 +539,8 @@ function toRemoteMatch(item) {
 function fromRemoteMatch(item, lineupData, plan) {
   return {
     id: item.id,
+    teamId: lineupData?.teamId || DEFAULT_TEAM_ID,
+    teamName: lineupData?.teamName || "",
     round: item.round,
     home: item.home,
     away: item.away,
@@ -520,7 +558,9 @@ function toRemoteLineup(item) {
     match_id: item.id,
     lineup: {
       ...(item.lineup || {}),
-      [FORMATION_STORAGE_KEY]: item.formation || DEFAULT_FORMATION
+      [FORMATION_STORAGE_KEY]: item.formation || DEFAULT_FORMATION,
+      __teamId: item.teamId || DEFAULT_TEAM_ID,
+      __teamName: teamName(item.teamId)
     },
     updated_at: new Date().toISOString()
   };
@@ -529,8 +569,12 @@ function toRemoteLineup(item) {
 function parseRemoteLineup(value) {
   const lineup = { ...(value || {}) };
   const formation = FORMATIONS[lineup[FORMATION_STORAGE_KEY]] ? lineup[FORMATION_STORAGE_KEY] : DEFAULT_FORMATION;
+  const teamId = lineup.__teamId || DEFAULT_TEAM_ID;
+  const remoteTeamName = lineup.__teamName || "";
   delete lineup[FORMATION_STORAGE_KEY];
-  return { lineup, formation };
+  delete lineup.__teamId;
+  delete lineup.__teamName;
+  return { lineup, formation, teamId, teamName: remoteTeamName };
 }
 
 function toRemotePlan(item) {
@@ -548,6 +592,51 @@ function setView(view) {
   state.activeView = view;
   saveState();
   render();
+}
+
+function currentTeam() {
+  return state.teams.find((item) => item.id === state.activeTeamId) || state.teams[0];
+}
+
+function teamName(teamId = state.activeTeamId) {
+  return state.teams.find((item) => item.id === teamId)?.name || TEAM_NAME;
+}
+
+function activePlayers() {
+  return state.players.filter((item) => (item.teamId || DEFAULT_TEAM_ID) === state.activeTeamId);
+}
+
+function activeMatches() {
+  return state.matches.filter((item) => (item.teamId || DEFAULT_TEAM_ID) === state.activeTeamId);
+}
+
+function uniqueTeamId(name) {
+  const base =
+    name
+      .toLowerCase()
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-+|-+$/g, "") || "equipo";
+  let id = base;
+  let suffix = 2;
+  while (state.teams.some((item) => item.id === id)) id = `${base}-${suffix++}`;
+  return id;
+}
+
+function syncTeamsFromData() {
+  const known = new Map(state.teams.map((item) => [item.id, item]));
+  [...state.players, ...state.matches].forEach((item) => {
+    const id = item.teamId || DEFAULT_TEAM_ID;
+    if (!known.has(id)) {
+      const team = { id, name: item.teamName || (id === DEFAULT_TEAM_ID ? TEAM_NAME : id) };
+      state.teams.push(team);
+      known.set(id, team);
+    }
+  });
+  if (!state.teams.some((item) => item.id === state.activeTeamId)) {
+    state.activeTeamId = state.teams[0]?.id || DEFAULT_TEAM_ID;
+  }
 }
 
 function render() {
@@ -580,27 +669,52 @@ function normalizedMainView() {
 
 function pageTitleForView(view) {
   const titles = {
-    squad: "Plantilla",
+    squad: "Equipos",
     matches: "Partidos",
     standings: "Clasificación",
     statistics: "Estadísticas",
     playerDetail: "Ficha del jugador",
     detail: "Detalle de partido"
   };
-  return titles[view] || "Plantilla";
+  return titles[view] || "Equipos";
 }
 
 function renderSquad() {
+  const players = activePlayers();
   views.squad.innerHTML = `
+    <div class="team-switcher panel">
+      <label>
+        Equipo
+        <select id="team-selector">
+          ${state.teams
+            .map((item) => `<option value="${item.id}" ${item.id === state.activeTeamId ? "selected" : ""}>${escapeHtml(item.name)}</option>`)
+            .join("")}
+        </select>
+      </label>
+      <div class="team-switcher-summary">
+        <strong>${escapeHtml(currentTeam().name)}</strong>
+        <span class="meta">${players.length} jugadores · ${activeMatches().length} partidos</span>
+      </div>
+      <button class="primary-button" id="add-team-button" type="button">Añadir equipo</button>
+    </div>
     <div class="squad-grid">
-      ${state.players
+      ${players
         .slice()
         .sort((a, b) => a.number - b.number)
         .map(renderPlayerCard)
         .join("")}
     </div>
+    ${players.length ? "" : `<div class="empty-state">Este equipo aún no tiene jugadores. Usa “Añadir jugador” para crear su plantilla.</div>`}
   `;
 
+  views.squad.querySelector("#team-selector").addEventListener("change", (event) => {
+    state.activeTeamId = event.target.value;
+    state.selectedPlayerId = activePlayers()[0]?.id || "";
+    state.selectedMatchId = activeMatches()[0]?.id || "";
+    saveState();
+    render();
+  });
+  views.squad.querySelector("#add-team-button").addEventListener("click", () => teamDialog.showModal());
   views.squad.querySelectorAll("[data-edit-player]").forEach((button) => {
     button.addEventListener("click", () => openPlayerDialog(button.dataset.editPlayer));
   });
@@ -635,7 +749,7 @@ function renderPlayerCard(item) {
 }
 
 function renderPlayerDetail() {
-  const item = state.players.find((playerItem) => playerItem.id === state.selectedPlayerId) || state.players[0];
+  const item = activePlayers().find((playerItem) => playerItem.id === state.selectedPlayerId) || activePlayers()[0];
   if (!item) {
     views.playerDetail.innerHTML = `<div class="empty-state">Todavía no hay jugadores en la plantilla.</div>`;
     return;
@@ -645,7 +759,7 @@ function renderPlayerDetail() {
 
   views.playerDetail.innerHTML = `
     <div class="player-profile-header">
-      <button class="secondary-button" id="back-to-squad" type="button">Volver a plantilla</button>
+      <button class="secondary-button" id="back-to-squad" type="button">Volver a equipos</button>
       <div class="row-actions">
         <button class="primary-button" id="download-player-pdf" type="button">Descargar PDF</button>
         <button class="secondary-button" data-edit-player="${item.id}" type="button">Editar jugador</button>
@@ -668,7 +782,7 @@ function renderPlayerDetail() {
           ${renderPlayerInfo("Edad", `${calculateAge(item.birthdate)} años`)}
           ${renderPlayerInfo("Lateralidad", item.laterality || "Diestro")}
           ${renderPlayerInfo("Posición", item.position)}
-          ${renderPlayerInfo("Partidos registrados", state.matches.length)}
+          ${renderPlayerInfo("Partidos registrados", activeMatches().length)}
         </div>
         <label class="profile-description">
           Descripción del jugador
@@ -728,7 +842,7 @@ function renderPlayerDetail() {
 }
 
 function renderPlayerStatistics(item, body) {
-  const appearances = state.matches.filter((matchItem) => matchItem.lineup?.[item.id]);
+  const appearances = activeMatches().filter((matchItem) => matchItem.lineup?.[item.id]);
   const playedAppearances = appearances.filter((matchItem) => Boolean(parseScore(matchItem.score)));
   const totals = playerReportTotals(item);
   const latestAppearance = appearances
@@ -820,7 +934,7 @@ function renderPlayerCareer(item, body) {
       <div class="current-club-card">
         <div class="crest small-crest">AC</div>
         <div>
-          <strong>${TEAM_NAME}</strong>
+          <strong>${escapeHtml(currentTeam().name)}</strong>
           <div class="meta">Temporada 2026 · ${escapeHtml(item.position)}</div>
         </div>
       </div>
@@ -838,7 +952,7 @@ function renderPlayerCareer(item, body) {
 }
 
 function renderPlayerReports(item, body) {
-  const matches = state.matches.slice().sort((a, b) => a.round - b.round);
+  const matches = activeMatches().slice().sort((a, b) => a.round - b.round);
   body.innerHTML = `
     <section class="panel player-tab-page">
       <div class="section-intro">
@@ -1007,14 +1121,20 @@ function renderPlayerRating(key, label, value) {
 }
 
 function renderMatches() {
+  const matches = activeMatches();
   views.matches.innerHTML = `
+    <div class="active-team-context">
+      <span class="eyebrow">Equipo seleccionado</span>
+      <strong>${escapeHtml(currentTeam().name)}</strong>
+    </div>
     <div class="match-grid">
-      ${state.matches
+      ${matches
         .slice()
         .sort((a, b) => a.round - b.round)
         .map(renderMatchCard)
         .join("")}
     </div>
+    ${matches.length ? "" : `<div class="empty-state">Este equipo todavía no tiene partidos.</div>`}
   `;
 
   views.matches.querySelectorAll("[data-open-match]").forEach((button) => {
@@ -1053,7 +1173,7 @@ function renderMatchCard(item) {
 }
 
 function renderMatchDetail() {
-  const item = state.matches.find((matchItem) => matchItem.id === state.selectedMatchId) || state.matches[0];
+  const item = activeMatches().find((matchItem) => matchItem.id === state.selectedMatchId) || activeMatches()[0];
   if (!item) {
     views.detail.innerHTML = `<div class="empty-state">Todavía no hay partidos creados.</div>`;
     return;
@@ -1129,7 +1249,7 @@ function renderStandings() {
                   ${table
                     .map(
                       (team, index) => `
-                        <tr class="${team.name === TEAM_NAME ? "highlight-row" : ""}">
+                        <tr class="${team.name === currentTeam().name ? "highlight-row" : ""}">
                           <td><strong>${index + 1}</strong></td>
                           <td class="team-cell">${escapeHtml(team.name)}</td>
                           <td>${team.played}</td>
@@ -1178,7 +1298,7 @@ function renderStatistics() {
         ${renderTeamSummary("Partidos", teamStats.played, `${teamStats.won} ganados · ${teamStats.drawn} empatados · ${teamStats.lost} perdidos`)}
         ${renderTeamSummary("Goles", teamStats.goalsFor, `${teamStats.goalsAgainst} encajados`)}
         ${renderTeamSummary("Puntos", teamStats.points, `${formatGoalDifference(teamStats.goalsFor - teamStats.goalsAgainst)} diferencia de goles`)}
-        ${renderTeamSummary("Alineaciones", totalLineups, `${state.players.length} jugadores`)}
+        ${renderTeamSummary("Alineaciones", totalLineups, `${activePlayers().length} jugadores`)}
         ${renderTeamSummary("Informes", totalReports, "Informes individuales guardados")}
       </section>
 
@@ -1198,7 +1318,7 @@ function renderStatistics() {
       <section class="players-statistics-section">
         <div class="statistics-title-row">
           <div>
-            <p class="eyebrow">Plantilla 2026</p>
+            <p class="eyebrow">${escapeHtml(currentTeam().name)} · 2026</p>
             <h2>Estadísticas jugadores</h2>
           </div>
           <span class="meta">Totales acumulados desde los informes de partido</span>
@@ -1309,7 +1429,7 @@ function renderPlayerStatisticsRow(item) {
 
 function renderLineup(item, body) {
   const lineupIds = new Set(Object.keys(item.lineup || {}));
-  const bench = state.players.filter((playerItem) => !lineupIds.has(playerItem.id));
+  const bench = activePlayers().filter((playerItem) => !lineupIds.has(playerItem.id));
   const selectedFormation = FORMATIONS[item.formation] ? item.formation : DEFAULT_FORMATION;
 
   body.innerHTML = `
@@ -1400,7 +1520,7 @@ function renderLineup(item, body) {
 }
 
 function renderLineupToken(playerId, position) {
-  const item = state.players.find((playerItem) => playerItem.id === playerId);
+  const item = activePlayers().find((playerItem) => playerItem.id === playerId);
   if (!item) return "";
   const displayX = 100 - position.y;
   const displayY = position.x;
@@ -1545,7 +1665,7 @@ function openMatchDialog(id) {
   document.querySelector("#match-id").value = item?.id || "";
   document.querySelector("#match-round").value = item?.round || nextRound();
   document.querySelector("#match-date").value = item?.date || "";
-  document.querySelector("#match-home").value = item?.home || TEAM_NAME;
+  document.querySelector("#match-home").value = item?.home || currentTeam().name;
   document.querySelector("#match-away").value = item?.away || "";
   document.querySelector("#match-status").value = item?.status || "Preparación";
   document.querySelector("#match-score").value = item?.score || "";
@@ -1556,7 +1676,7 @@ function deletePlayer(id) {
   const item = state.players.find((playerItem) => playerItem.id === id);
   if (!item || !confirm(`¿Eliminar a ${item.name}?`)) return;
   state.players = state.players.filter((playerItem) => playerItem.id !== id);
-  state.matches.forEach((matchItem) => delete matchItem.lineup[id]);
+  activeMatches().forEach((matchItem) => delete matchItem.lineup[id]);
   saveState();
   supabaseDeletePlayerPhoto(item.photoPath);
   supabaseDelete("players", "id", id);
@@ -1567,20 +1687,20 @@ function deleteMatch(id) {
   const item = state.matches.find((matchItem) => matchItem.id === id);
   if (!item || !confirm(`¿Eliminar la jornada ${item.round}?`)) return;
   state.matches = state.matches.filter((matchItem) => matchItem.id !== id);
-  state.selectedMatchId = state.matches[0]?.id || "";
+  state.selectedMatchId = activeMatches()[0]?.id || "";
   saveState();
   supabaseDelete("matches", "id", id);
   render();
 }
 
 function selectedMatch() {
-  const item = state.matches.find((matchItem) => matchItem.id === state.selectedMatchId) || state.matches[0];
+  const item = activeMatches().find((matchItem) => matchItem.id === state.selectedMatchId) || activeMatches()[0];
   if (item) state.selectedMatchId = item.id;
   return item;
 }
 
 function nextRound() {
-  return Math.max(0, ...state.matches.map((item) => item.round)) + 1;
+  return Math.max(0, ...activeMatches().map((item) => item.round)) + 1;
 }
 
 function updatePhotoPreview(photo) {
@@ -1748,7 +1868,7 @@ function playerMinutesPlayed(item) {
 
 function playerReportTotals(item) {
   const keys = ["minutes", "completedPasses", "failedPasses", "losses", "recoveries", "goals", "assists", "shotsOnTarget", "goalPasses"];
-  return state.matches.reduce(
+  return activeMatches().reduce(
     (totals, matchItem) => {
       const report = playerReport(item, matchItem.id);
       keys.forEach((key) => {
@@ -1801,9 +1921,9 @@ async function downloadPlayerPdf(item) {
   }
   popup.document.write("<p style=\"font:16px Arial;padding:24px\">Preparando la ficha y cargando la fotografía...</p>");
 
-  const appearances = state.matches.filter((matchItem) => matchItem.lineup?.[item.id]);
+  const appearances = activeMatches().filter((matchItem) => matchItem.lineup?.[item.id]);
   const totals = playerReportTotals(item);
-  const reports = state.matches
+  const reports = activeMatches()
     .slice()
     .sort((a, b) => a.round - b.round)
     .map((matchItem) => ({ match: matchItem, report: playerReport(item, matchItem.id) }))
@@ -1888,7 +2008,7 @@ async function downloadPlayerPdf(item) {
           ${renderPdfMetric("Recuperaciones", totals.recoveries)}
         </div>
         <h2>Trayectoria</h2>
-        <div class="description">${escapeHtml(item.career || `${TEAM_NAME} · Temporada 2026`)}</div>
+        <div class="description">${escapeHtml(item.career || `${currentTeam().name} · Temporada 2026`)}</div>
         <h2>Informes de partido</h2>
         ${
           reports.length
@@ -1969,7 +2089,7 @@ function renderPdfReportStat(label, value) {
 }
 
 function parsedMatches() {
-  return state.matches.flatMap((item) => {
+  return activeMatches().flatMap((item) => {
     const score = parseScore(item.score);
     return score ? [{ ...item, homeGoals: score.home, awayGoals: score.away }] : [];
   });
@@ -2038,6 +2158,7 @@ function buildStandings() {
 }
 
 function calculateTeamStats(matches) {
+  const selectedTeamName = currentTeam().name;
   const stats = {
     played: 0,
     won: 0,
@@ -2049,8 +2170,8 @@ function calculateTeamStats(matches) {
   };
 
   matches.forEach((item) => {
-    const isHome = item.home === TEAM_NAME;
-    const isAway = item.away === TEAM_NAME;
+    const isHome = item.home === selectedTeamName;
+    const isAway = item.away === selectedTeamName;
     if (!isHome && !isAway) return;
     const goalsFor = isHome ? item.homeGoals : item.awayGoals;
     const goalsAgainst = isHome ? item.awayGoals : item.homeGoals;
@@ -2072,10 +2193,12 @@ function calculateTeamStats(matches) {
 }
 
 function buildPlayerStatistics() {
-  const totalMatches = state.matches.length;
-  return state.players
+  const matches = activeMatches();
+  const matchIds = new Set(matches.map((item) => item.id));
+  const totalMatches = matches.length;
+  return activePlayers()
     .map((item) => {
-      const appearances = state.matches.filter((matchItem) => matchItem.lineup?.[item.id]);
+      const appearances = matches.filter((matchItem) => matchItem.lineup?.[item.id]);
       const played = appearances.filter((matchItem) => Boolean(parseScore(matchItem.score))).length;
       const totals = playerReportTotals(item);
       return {
@@ -2089,6 +2212,7 @@ function buildPlayerStatistics() {
         participation: totalMatches ? Math.round((appearances.length / totalMatches) * 100) : 0,
         ...totals,
         reports: Object.keys(item.reports || {}).filter((matchId) => {
+          if (!matchIds.has(matchId)) return false;
           const report = playerReport(item, matchId);
           return playerReportHasData(report);
         }).length
@@ -2102,7 +2226,7 @@ function countPlayersByPosition() {
   return Object.fromEntries(
     positions.map((position) => [
       position,
-      state.players.filter((playerItem) => playerItem.position === position).length
+      activePlayers().filter((playerItem) => playerItem.position === position).length
     ])
   );
 }
