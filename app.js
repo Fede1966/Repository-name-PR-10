@@ -750,6 +750,7 @@ function renderPlayerStatistics(item, body) {
         ${renderMetric("Tiros a puerta", totals.shotsOnTarget)}
         ${renderMetric("Pases de gol", totals.goalPasses)}
         ${renderMetric("Pases correctos", totals.completedPasses)}
+        ${renderMetric("Pases fallados", totals.failedPasses)}
         ${renderMetric("Pérdidas", totals.losses)}
         ${renderMetric("Recuperaciones", totals.recoveries)}
       </div>
@@ -834,6 +835,7 @@ function renderPlayerReports(item, body) {
                       </label>
                       <div class="report-data-grid">
                         ${renderReportStatInput(matchItem.id, "completedPasses", "Pases correctos", report.completedPasses)}
+                        ${renderReportStatInput(matchItem.id, "failedPasses", "Pases fallados", report.failedPasses)}
                         ${renderReportStatInput(matchItem.id, "losses", "Pérdidas", report.losses)}
                         ${renderReportStatInput(matchItem.id, "recoveries", "Recuperaciones", report.recoveries)}
                         ${renderReportStatInput(matchItem.id, "minutes", "Minutos jugados", report.minutes, 130)}
@@ -1140,6 +1142,7 @@ function renderStatistics() {
                   <th>Tiros a puerta</th>
                   <th>Pases de gol</th>
                   <th>Pases correctos</th>
+                  <th>Pases fallados</th>
                   <th>Pérdidas</th>
                   <th>Recuperaciones</th>
                 </tr>
@@ -1222,6 +1225,7 @@ function renderPlayerStatisticsRow(item) {
       <td>${item.shotsOnTarget}</td>
       <td>${item.goalPasses}</td>
       <td>${item.completedPasses}</td>
+      <td>${item.failedPasses}</td>
       <td>${item.losses}</td>
       <td>${item.recoveries}</td>
     </tr>
@@ -1605,6 +1609,7 @@ function normalizePlayerReports(reports) {
           minutes: clamp(Number(value?.minutes) || 0, 0, 130),
           youtube: value?.youtube || "",
           completedPasses: nonNegativeInteger(value?.completedPasses),
+          failedPasses: nonNegativeInteger(value?.failedPasses),
           losses: nonNegativeInteger(value?.losses),
           recoveries: nonNegativeInteger(value?.recoveries),
           goals: nonNegativeInteger(value?.goals),
@@ -1623,6 +1628,7 @@ function emptyPlayerReport() {
     minutes: 0,
     youtube: "",
     completedPasses: 0,
+    failedPasses: 0,
     losses: 0,
     recoveries: 0,
     goals: 0,
@@ -1645,6 +1651,7 @@ function playerReport(item, matchId) {
     minutes: clamp(Number(value?.minutes) || 0, 0, 130),
     youtube: value?.youtube || "",
     completedPasses: nonNegativeInteger(value?.completedPasses),
+    failedPasses: nonNegativeInteger(value?.failedPasses),
     losses: nonNegativeInteger(value?.losses),
     recoveries: nonNegativeInteger(value?.recoveries),
     goals: nonNegativeInteger(value?.goals),
@@ -1665,7 +1672,7 @@ function playerMinutesPlayed(item) {
 }
 
 function playerReportTotals(item) {
-  const keys = ["minutes", "completedPasses", "losses", "recoveries", "goals", "assists", "shotsOnTarget", "goalPasses"];
+  const keys = ["minutes", "completedPasses", "failedPasses", "losses", "recoveries", "goals", "assists", "shotsOnTarget", "goalPasses"];
   return state.matches.reduce(
     (totals, matchItem) => {
       const report = playerReport(item, matchItem.id);
@@ -1684,6 +1691,7 @@ function playerReportHasData(report) {
       report.youtube ||
       report.minutes ||
       report.completedPasses ||
+      report.failedPasses ||
       report.losses ||
       report.recoveries ||
       report.goals ||
@@ -1800,6 +1808,7 @@ async function downloadPlayerPdf(item) {
           ${renderPdfMetric("Tiros a puerta", totals.shotsOnTarget)}
           ${renderPdfMetric("Pases de gol", totals.goalPasses)}
           ${renderPdfMetric("Pases correctos", totals.completedPasses)}
+          ${renderPdfMetric("Pases fallados", totals.failedPasses)}
           ${renderPdfMetric("Pérdidas", totals.losses)}
           ${renderPdfMetric("Recuperaciones", totals.recoveries)}
         </div>
@@ -1816,6 +1825,7 @@ async function downloadPlayerPdf(item) {
                       <div class="meta">${match.date ? formatDate(match.date) : "Fecha pendiente"} · ${report.minutes} minutos</div>
                       <div class="report-stats">
                         ${renderPdfReportStat("Pases correctos", report.completedPasses)}
+                        ${renderPdfReportStat("Pases fallados", report.failedPasses)}
                         ${renderPdfReportStat("Pérdidas", report.losses)}
                         ${renderPdfReportStat("Recuperaciones", report.recoveries)}
                         ${renderPdfReportStat("Goles", report.goals)}
