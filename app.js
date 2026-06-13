@@ -1150,8 +1150,8 @@ function renderPlayerReports(item, body) {
                         ${renderReportStatInput(matchItem.id, "assists", "Asistencias de gol", report.assists)}
                         ${renderReportStatInput(matchItem.id, "shotsOnTarget", "Tiros a puerta", report.shotsOnTarget)}
                         ${renderReportStatInput(matchItem.id, "goalPasses", "Pases de gol", report.goalPasses)}
-                        ${renderReportCardToggle(matchItem.id, "yellowCard", "Tarjeta amarilla", report.yellowCard, "yellow")}
-                        ${renderReportCardToggle(matchItem.id, "redCard", "Tarjeta roja", report.redCard, "red")}
+                        ${renderReportStatInput(matchItem.id, "yellowCards", "Tarjetas amarillas", report.yellowCards, 2)}
+                        ${renderReportStatInput(matchItem.id, "redCards", "Tarjetas rojas", report.redCards, 1)}
                         <label>
                           Vídeo de YouTube
                           <input data-player-report-youtube="${matchItem.id}" type="url" value="${escapeAttr(report.youtube)}" placeholder="https://www.youtube.com/watch?v=..." />
@@ -1192,7 +1192,7 @@ function renderPlayerReports(item, body) {
     input.addEventListener("input", () => {
       const report = ensurePlayerReport(item, input.dataset.playerReportStat);
       const key = input.dataset.reportStat;
-      const maximum = key === "minutes" ? 130 : 9999;
+      const maximum = key === "minutes" ? 130 : key === "yellowCards" ? 2 : key === "redCards" ? 1 : 9999;
       report[key] = clamp(Math.round(Number(input.value) || 0), 0, maximum);
       saveState();
       markPlayerReportPending(body, input.dataset.playerReportStat);
@@ -1204,14 +1204,6 @@ function renderPlayerReports(item, body) {
       report.rating = input.value === "" ? 0 : clamp(Number(input.value) || 0, 1, 10);
       saveState();
       markPlayerReportPending(body, input.dataset.playerReportRating);
-    });
-  });
-  body.querySelectorAll("[data-player-report-card]").forEach((input) => {
-    input.addEventListener("change", () => {
-      const report = ensurePlayerReport(item, input.dataset.playerReportCard);
-      report[input.dataset.reportCard] = input.checked;
-      saveState();
-      markPlayerReportPending(body, input.dataset.playerReportCard);
     });
   });
   body.querySelectorAll("[data-player-report-youtube]").forEach((input) => {
@@ -1258,6 +1250,7 @@ function markPlayerReportPending(body, matchId) {
 }
 
 function renderReportStatInput(matchId, key, label, value, max = 9999) {
+  const displayValue = ["yellowCards", "redCards"].includes(key) ? value : value || "";
   return `
     <label>
       ${escapeHtml(label)}
@@ -1267,24 +1260,9 @@ function renderReportStatInput(matchId, key, label, value, max = 9999) {
         type="number"
         min="0"
         max="${max}"
-        value="${value || ""}"
+        value="${displayValue}"
         placeholder="0"
       />
-    </label>
-  `;
-}
-
-function renderReportCardToggle(matchId, key, label, checked, color) {
-  return `
-    <label class="report-card-toggle ${color}">
-      <input
-        data-player-report-card="${matchId}"
-        data-report-card="${key}"
-        type="checkbox"
-        ${checked ? "checked" : ""}
-      />
-      <span class="card-symbol" aria-hidden="true"></span>
-      <strong>${escapeHtml(label)}</strong>
     </label>
   `;
 }
@@ -1547,6 +1525,8 @@ function renderStatistics() {
                   <th>Pases fallados</th>
                   <th>Pérdidas</th>
                   <th>Recuperaciones</th>
+                  <th>Amarillas</th>
+                  <th>Rojas</th>
                 </tr>
               </thead>
               <tbody>
@@ -1647,6 +1627,8 @@ function renderPlayerStatisticsRow(item) {
       <td>${item.failedPasses}</td>
       <td>${item.losses}</td>
       <td>${item.recoveries}</td>
+      <td>${item.yellowCards}</td>
+      <td>${item.redCards}</td>
     </tr>
   `;
 }
@@ -2235,8 +2217,8 @@ function normalizePlayerReports(reports) {
           ...emptyPlayerReport(),
           text: value?.text || "",
           rating: clamp(Number(value?.rating) || 0, 0, 10),
-          yellowCard: Boolean(value?.yellowCard),
-          redCard: Boolean(value?.redCard),
+          yellowCards: normalizeCardCount(value?.yellowCards ?? value?.yellowCard, 2),
+          redCards: normalizeCardCount(value?.redCards ?? value?.redCard, 1),
           minutes: clamp(Number(value?.minutes) || 0, 0, 130),
           youtube: value?.youtube || "",
           completedPasses: nonNegativeInteger(value?.completedPasses),
@@ -2257,8 +2239,8 @@ function emptyPlayerReport() {
   return {
     text: "",
     rating: 0,
-    yellowCard: false,
-    redCard: false,
+    yellowCards: 0,
+    redCards: 0,
     minutes: 0,
     youtube: "",
     completedPasses: 0,
@@ -2311,6 +2293,11 @@ function nonNegativeInteger(value) {
   return Math.max(0, Math.round(Number(value) || 0));
 }
 
+function normalizeCardCount(value, maximum) {
+  if (value === true) return 1;
+  return clamp(nonNegativeInteger(value), 0, maximum);
+}
+
 function playerReport(item, matchId) {
   const value = item.reports?.[matchId];
   if (typeof value === "string") return { ...emptyPlayerReport(), text: value };
@@ -2318,8 +2305,8 @@ function playerReport(item, matchId) {
     ...emptyPlayerReport(),
     text: value?.text || "",
     rating: clamp(Number(value?.rating) || 0, 0, 10),
-    yellowCard: Boolean(value?.yellowCard),
-    redCard: Boolean(value?.redCard),
+    yellowCards: normalizeCardCount(value?.yellowCards ?? value?.yellowCard, 2),
+    redCards: normalizeCardCount(value?.redCards ?? value?.redCard, 1),
     minutes: clamp(Number(value?.minutes) || 0, 0, 130),
     youtube: value?.youtube || "",
     completedPasses: nonNegativeInteger(value?.completedPasses),
@@ -2348,11 +2335,9 @@ function playerReportTotals(item) {
   return activeMatches().reduce(
     (totals, matchItem) => {
       const report = playerReport(item, matchItem.id);
-      keys.slice(0, -2).forEach((key) => {
+      keys.forEach((key) => {
         totals[key] += report[key];
       });
-      totals.yellowCards += report.yellowCard ? 1 : 0;
-      totals.redCards += report.redCard ? 1 : 0;
       return totals;
     },
     Object.fromEntries(keys.map((key) => [key, 0]))
@@ -2363,8 +2348,8 @@ function playerReportHasData(report) {
   return Boolean(
     report.text.trim() ||
       report.rating ||
-      report.yellowCard ||
-      report.redCard ||
+      report.yellowCards ||
+      report.redCards ||
       report.youtube ||
       report.minutes ||
       report.completedPasses ||
@@ -2511,8 +2496,8 @@ async function downloadPlayerPdf(item) {
                         ${renderPdfReportStat("Asistencias de gol", report.assists)}
                         ${renderPdfReportStat("Tiros a puerta", report.shotsOnTarget)}
                         ${renderPdfReportStat("Pases de gol", report.goalPasses)}
-                        ${renderPdfReportStat("Tarjeta amarilla", report.yellowCard ? "Sí" : "No")}
-                        ${renderPdfReportStat("Tarjeta roja", report.redCard ? "Sí" : "No")}
+                        ${renderPdfReportStat("Tarjetas amarillas", report.yellowCards)}
+                        ${renderPdfReportStat("Tarjetas rojas", report.redCards)}
                       </div>
                       ${report.text ? `<p>${escapeHtml(report.text)}</p>` : ""}
                       ${report.youtube ? `<p><a href="${escapeAttr(report.youtube)}">${escapeHtml(report.youtube)}</a></p>` : ""}
