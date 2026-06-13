@@ -80,6 +80,7 @@ const matchDialog = document.querySelector("#match-dialog");
 const matchForm = document.querySelector("#match-form");
 const teamDialog = document.querySelector("#team-dialog");
 const teamForm = document.querySelector("#team-form");
+const deleteTeamButton = document.querySelector("#delete-team-button");
 const playerPhotoInput = document.querySelector("#player-photo");
 const playerPhotoFileInput = document.querySelector("#player-photo-file");
 const playerPhotoPreview = document.querySelector("#player-photo-preview");
@@ -92,17 +93,26 @@ document.querySelectorAll(".nav-button").forEach((button) => {
 teamForm.addEventListener("submit", (event) => {
   if (event.submitter?.value === "cancel") return;
   event.preventDefault();
+  const teamId = document.querySelector("#team-id").value;
   const name = document.querySelector("#team-name").value.trim();
   if (!name) return;
-  const id = uniqueTeamId(name);
-  state.teams.push({ id, name });
-  state.activeTeamId = id;
-  state.selectedPlayerId = "";
-  state.selectedMatchId = "";
-  document.querySelector("#team-name").value = "";
+  if (teamId) {
+    renameTeam(teamId, name);
+  } else {
+    const id = uniqueTeamId(name);
+    state.teams.push({ id, name });
+    state.activeTeamId = id;
+    state.selectedPlayerId = "";
+    state.selectedMatchId = "";
+  }
   saveState();
   teamDialog.close();
   render();
+});
+
+deleteTeamButton.addEventListener("click", () => {
+  const teamId = document.querySelector("#team-id").value;
+  if (teamId) deleteTeam(teamId);
 });
 
 contextActionButton.addEventListener("click", () => {
@@ -638,6 +648,64 @@ function uniqueTeamId(name) {
   return id;
 }
 
+function openTeamDialog(teamId = "") {
+  const item = state.teams.find((team) => team.id === teamId);
+  document.querySelector("#team-modal-title").textContent = item ? "Editar equipo" : "Nuevo equipo";
+  document.querySelector("#team-id").value = item?.id || "";
+  document.querySelector("#team-name").value = item?.name || "";
+  document.querySelector("#save-team-button").textContent = item ? "Guardar cambios" : "Crear equipo";
+  deleteTeamButton.style.display = item ? "inline-flex" : "none";
+  teamDialog.showModal();
+}
+
+function renameTeam(teamId, name) {
+  const item = state.teams.find((team) => team.id === teamId);
+  if (!item || item.name === name) return;
+  const previousName = item.name;
+  item.name = name;
+  state.players
+    .filter((playerItem) => playerItem.teamId === teamId)
+    .forEach((playerItem) => {
+      playerItem.teamName = name;
+    });
+  state.matches
+    .filter((matchItem) => matchItem.teamId === teamId)
+    .forEach((matchItem) => {
+      matchItem.teamName = name;
+      if (matchItem.home === previousName) matchItem.home = name;
+      if (matchItem.away === previousName) matchItem.away = name;
+    });
+}
+
+async function deleteTeam(teamId) {
+  const item = state.teams.find((team) => team.id === teamId);
+  if (!item) return;
+  if (state.teams.length === 1) {
+    alert("Debe existir al menos un equipo.");
+    return;
+  }
+  const players = state.players.filter((playerItem) => playerItem.teamId === teamId);
+  const matches = state.matches.filter((matchItem) => matchItem.teamId === teamId);
+  const message = `¿Eliminar ${item.name}? También se eliminarán ${players.length} jugadores y ${matches.length} partidos de este equipo.`;
+  if (!confirm(message)) return;
+
+  state.players = state.players.filter((playerItem) => playerItem.teamId !== teamId);
+  state.matches = state.matches.filter((matchItem) => matchItem.teamId !== teamId);
+  state.teams = state.teams.filter((team) => team.id !== teamId);
+  state.activeTeamId = state.teams[0].id;
+  state.selectedPlayerId = activePlayers()[0]?.id || "";
+  state.selectedMatchId = activeMatches()[0]?.id || "";
+  saveState();
+  teamDialog.close();
+  render();
+
+  await Promise.allSettled([
+    ...players.map((playerItem) => supabaseDelete("players", "id", playerItem.id)),
+    ...players.map((playerItem) => supabaseDeletePlayerPhoto(playerItem.photoPath)),
+    ...matches.map((matchItem) => supabaseDelete("matches", "id", matchItem.id))
+  ]);
+}
+
 function syncTeamsFromData() {
   const known = new Map(state.teams.map((item) => [item.id, item]));
   [...state.players, ...state.matches].forEach((item) => {
@@ -709,7 +777,10 @@ function renderSquad() {
         <strong>${escapeHtml(currentTeam().name)}</strong>
         <span class="meta">${players.length} jugadores · ${activeMatches().length} partidos</span>
       </div>
-      <button class="primary-button" id="add-team-button" type="button">Añadir equipo</button>
+      <div class="team-switcher-actions">
+        <button class="secondary-button" id="edit-team-button" type="button">Editar equipo</button>
+        <button class="primary-button" id="add-team-button" type="button">Añadir equipo</button>
+      </div>
     </div>
     <div class="squad-grid">
       ${players
@@ -728,7 +799,8 @@ function renderSquad() {
     saveState();
     render();
   });
-  views.squad.querySelector("#add-team-button").addEventListener("click", () => teamDialog.showModal());
+  views.squad.querySelector("#edit-team-button").addEventListener("click", () => openTeamDialog(state.activeTeamId));
+  views.squad.querySelector("#add-team-button").addEventListener("click", () => openTeamDialog());
   views.squad.querySelectorAll("[data-edit-player]").forEach((button) => {
     button.addEventListener("click", () => openPlayerDialog(button.dataset.editPlayer));
   });
