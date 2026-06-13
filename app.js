@@ -1484,7 +1484,7 @@ function renderStatistics() {
               <thead>
                 <tr>
                   <th>Jugador</th>
-                  <th>Alineaciones</th>
+                  <th>Titularidades</th>
                   <th>Jugados</th>
                   <th>Minutos</th>
                   <th>Goles</th>
@@ -1584,7 +1584,7 @@ function renderPlayerStatisticsRow(item) {
         <div class="statistics-player-photo" ${photoStyle}>${item.photo ? "" : initials(item.name)}</div>
         <div><strong>${escapeHtml(item.name)}</strong><span>${escapeHtml(item.position)}</span></div>
       </td>
-      <td>${item.appearances}</td>
+      <td>${item.starts}</td>
       <td>${item.played}</td>
       <td>${item.minutes}</td>
       <td>${item.goals}</td>
@@ -2615,6 +2615,12 @@ function buildPlayerStatistics() {
   return activePlayers()
     .map((item) => {
       const appearances = matches.filter((matchItem) => matchItem.lineup?.[item.id]);
+      const starts = matches.filter((matchItem) => {
+        const sheets = normalizeLineupSheets(matchItem.lineupSheets, matchItem);
+        return sheets[ownTeamSide(matchItem)].some(
+          (row) => row.playerId === item.id && row.role === "starter"
+        );
+      }).length;
       const played = appearances.filter((matchItem) => Boolean(parseScore(matchItem.score))).length;
       const totals = playerReportTotals(item);
       return {
@@ -2624,6 +2630,7 @@ function buildPlayerStatistics() {
         position: item.position,
         photo: item.photo || "",
         appearances: appearances.length,
+        starts,
         played,
         participation: totalMatches ? Math.round((appearances.length / totalMatches) * 100) : 0,
         ...totals,
@@ -2634,7 +2641,7 @@ function buildPlayerStatistics() {
         }).length
       };
     })
-    .sort((a, b) => b.appearances - a.appearances || a.number - b.number);
+    .sort((a, b) => b.starts - a.starts || b.appearances - a.appearances || a.number - b.number);
 }
 
 function countPlayersByPosition() {
