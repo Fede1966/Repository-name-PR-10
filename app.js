@@ -7,6 +7,7 @@ const TEAM_NAME = "Athletic Club";
 const DEFAULT_TEAM_ID = "athletic-club";
 const DEFAULT_FORMATION = "1442";
 const FORMATION_STORAGE_KEY = "__formation";
+const APP_STATE_MATCH_ID = "__app_state__";
 const PLAN_SECTIONS = [
   ["offensive", "Acciones ofensivas"],
   ["defensive", "Acciones defensivas"],
@@ -35,6 +36,7 @@ const FORMATIONS = {
 };
 
 const initialState = {
+  lastModifiedAt: 0,
   teams: [{ id: DEFAULT_TEAM_ID, name: TEAM_NAME }],
   activeTeamId: DEFAULT_TEAM_ID,
   players: [
@@ -297,6 +299,7 @@ function loadState() {
     return {
       ...structuredClone(initialState),
       ...saved,
+      lastModifiedAt: Number(saved.lastModifiedAt) || 1,
       activeView,
       teams,
       activeTeamId,
@@ -327,6 +330,7 @@ function loadState() {
 }
 
 function saveState() {
+  state.lastModifiedAt = Date.now();
   localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
   queueRemoteSave();
 }
@@ -366,38 +370,58 @@ async function pullRemoteState() {
     const matches = settledValue(results[1], []);
     const lineups = settledValue(results[2], []);
     const plans = settledValue(results[3], []);
+    const requiredFailure = results.slice(0, 3).find((result) => result.status === "rejected");
+    if (requiredFailure) throw requiredFailure.reason;
     supportsRemotePlayerProfiles = players.some((item) => Object.hasOwn(item, "profile_data"));
 
-    const lineupByMatch = Object.fromEntries(lineups.map((item) => [item.match_id, parseRemoteLineup(item.lineup)]));
+    const remoteAppState = parseRemoteAppState(
+      lineups.find((item) => item.match_id === APP_STATE_MATCH_ID)?.lineup
+    );
+    const remoteUpdatedAt = Number(remoteAppState?.updatedAt) || 0;
+    const preferLocal = Number(state.lastModifiedAt) > remoteUpdatedAt;
+    const visibleMatches = matches.filter((item) => item.id !== APP_STATE_MATCH_ID);
+    const visibleLineups = lineups.filter((item) => item.match_id !== APP_STATE_MATCH_ID);
+    const lineupByMatch = Object.fromEntries(
+      visibleLineups.map((item) => [item.match_id, parseRemoteLineup(item.lineup)])
+    );
     const planByMatch = {};
     plans.forEach((item) => {
       planByMatch[item.match_id] = parseRemotePlan(item);
     });
 
     const hasRemotePlayers = players.length > 0;
-    const hasRemoteMatches = matches.length > 0;
+    const hasRemoteMatches = visibleMatches.length > 0;
     if (hasRemotePlayers) {
       const localPlayers = new Map(state.players.map((item) => [item.id, item]));
-      state.players = players.map((item) => fromRemotePlayer(item, localPlayers.get(item.id)));
+      const remotePlayerIds = new Set(players.map((item) => item.id));
+      state.players = [
+        ...players.map((item) => fromRemotePlayer(item, localPlayers.get(item.id))),
+        ...state.players.filter((item) => !remotePlayerIds.has(item.id))
+      ];
     }
     if (hasRemoteMatches) {
-      state.matches = matches.map((item) => fromRemoteMatch(item, lineupByMatch[item.id], planByMatch[item.id]));
+      const localMatches = new Map(state.matches.map((item) => [item.id, item]));
+      const remoteMatchIds = new Set(visibleMatches.map((item) => item.id));
+      state.matches = [
+        ...visibleMatches.map((item) => {
+          const remoteMatch = fromRemoteMatch(item, lineupByMatch[item.id], planByMatch[item.id]);
+          return preferLocal && localMatches.has(item.id) ? localMatches.get(item.id) : remoteMatch;
+        }),
+        ...state.matches.filter((item) => !remoteMatchIds.has(item.id))
+      ];
     } else if (!state.matches.length) {
       state.matches = structuredClone(initialState.matches);
+    }
+    if (remoteAppState) {
+      applyRemoteAppState(remoteAppState, preferLocal);
+      state.lastModifiedAt = Math.max(Number(state.lastModifiedAt) || 0, remoteUpdatedAt);
     }
     syncTeamsFromData();
     state.selectedMatchId = selectedMatch()?.id || "";
     localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
     render();
     isPullingRemote = false;
-    if (!hasRemotePlayers && state.players.length) {
-      await supabaseUpsert("players", state.players.map(toRemotePlayer), "id");
-    }
-    if (!hasRemoteMatches && state.matches.length) {
-      await supabaseUpsert("matches", state.matches.map(toRemoteMatch), "id");
-      await supabaseUpsert("lineups", state.matches.map(toRemoteLineup), "match_id");
-      await supabaseUpsert("game_plans", state.matches.map(toRemotePlan), "match_id");
-    }
+    await pushRemoteState();
   } catch (error) {
     console.error(error);
   } finally {
@@ -415,8 +439,8 @@ async function pushRemoteState(throwOnError = false) {
   if (!hasSupabaseConfig()) return;
   try {
     await supabaseUpsert("players", state.players.map(toRemotePlayer), "id");
-    await supabaseUpsert("matches", state.matches.map(toRemoteMatch), "id");
-    await supabaseUpsert("lineups", state.matches.map(toRemoteLineup), "match_id");
+    await supabaseUpsert("matches", [...state.matches.map(toRemoteMatch), toRemoteAppStateMatch()], "id");
+    await supabaseUpsert("lineups", [...state.matches.map(toRemoteLineup), toRemoteAppStateLineup()], "match_id");
     await supabaseUpsert("game_plans", state.matches.map(toRemotePlan), "match_id");
   } catch (error) {
     console.error(error);
@@ -562,6 +586,90 @@ function fromRemotePlayer(item, localItem = {}) {
     ratings: normalizePlayerRatings(remoteProfile.ratings || localItem.ratings),
     reports: normalizePlayerReports({ ...(localItem.reports || {}), ...(remoteProfile.reports || {}) })
   };
+}
+
+function playerProfileSnapshot(item) {
+  return {
+    teamId: item.teamId || DEFAULT_TEAM_ID,
+    teamName: teamName(item.teamId),
+    description: item.description || "",
+    career: item.career || "",
+    ratings: normalizePlayerRatings(item.ratings),
+    reports: normalizePlayerReports(item.reports)
+  };
+}
+
+function toRemoteAppStateMatch() {
+  return {
+    id: APP_STATE_MATCH_ID,
+    round: 0,
+    home: "Estado de la aplicación",
+    away: "Estado de la aplicación",
+    date: null,
+    status: "Sistema",
+    score: "",
+    updated_at: new Date().toISOString()
+  };
+}
+
+function toRemoteAppStateLineup() {
+  return {
+    match_id: APP_STATE_MATCH_ID,
+    lineup: {
+      __appState: {
+        version: 1,
+        updatedAt: Number(state.lastModifiedAt) || Date.now(),
+        teams: state.teams,
+        activeTeamId: state.activeTeamId,
+        playerProfiles: Object.fromEntries(
+          state.players.map((item) => [item.id, playerProfileSnapshot(item)])
+        )
+      }
+    },
+    updated_at: new Date().toISOString()
+  };
+}
+
+function parseRemoteAppState(value) {
+  const appState = value?.__appState;
+  return appState && typeof appState === "object" ? appState : null;
+}
+
+function applyRemoteAppState(remoteAppState, preferLocal) {
+  if (Array.isArray(remoteAppState.teams) && remoteAppState.teams.length) {
+    const remoteTeams = remoteAppState.teams
+      .filter((item) => item?.id && item?.name)
+      .map((item) => ({ id: String(item.id), name: String(item.name) }));
+    const teamsById = new Map(
+      (preferLocal ? [...remoteTeams, ...state.teams] : [...state.teams, ...remoteTeams]).map((item) => [
+        item.id,
+        item
+      ])
+    );
+    state.teams = [...teamsById.values()];
+  }
+  if (!preferLocal && state.teams.some((item) => item.id === remoteAppState.activeTeamId)) {
+    state.activeTeamId = remoteAppState.activeTeamId;
+  }
+  const profiles = remoteAppState.playerProfiles || {};
+  state.players = state.players.map((item) => {
+    const profile = profiles[item.id];
+    if (!profile) return item;
+    const reports = preferLocal
+      ? { ...(profile.reports || {}), ...(item.reports || {}) }
+      : { ...(item.reports || {}), ...(profile.reports || {}) };
+    const primary = preferLocal ? item : profile;
+    const secondary = preferLocal ? profile : item;
+    return {
+      ...item,
+      teamId: primary.teamId || secondary.teamId || DEFAULT_TEAM_ID,
+      teamName: primary.teamName || secondary.teamName || "",
+      description: primary.description || secondary.description || "",
+      career: primary.career || secondary.career || "",
+      ratings: normalizePlayerRatings(primary.ratings || secondary.ratings),
+      reports: normalizePlayerReports(reports)
+    };
+  });
 }
 
 function toRemoteMatch(item) {
