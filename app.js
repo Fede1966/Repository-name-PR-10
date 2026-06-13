@@ -61,7 +61,7 @@ const initialState = {
   selectedMatchId: "m1",
   selectedPlayerId: "p1",
   activeView: "squad",
-  activeDetailTab: "lineup",
+  activeDetailTab: "plan",
   activePlayerTab: "statistics"
 };
 
@@ -194,6 +194,8 @@ matchForm.addEventListener("submit", (event) => {
       chancesCreated: nonNegativeInteger(document.querySelector("#match-chances-created").value),
       chancesAgainst: nonNegativeInteger(document.querySelector("#match-chances-against").value)
     },
+    notes: existing?.notes || "",
+    lineupSheets: existing?.lineupSheets || null,
     lineup: existing?.lineup || {},
     formation: existing?.formation || DEFAULT_FORMATION,
     plan: existing?.plan || emptyPlan()
@@ -203,6 +205,7 @@ matchForm.addEventListener("submit", (event) => {
   if (index >= 0) state.matches[index] = formMatch;
   else state.matches.push(formMatch);
   state.selectedMatchId = id;
+  state.activeDetailTab = "plan";
   saveState();
   matchDialog.close();
   setView("detail");
@@ -240,6 +243,8 @@ function match(id, round, home, away, date, status, score, teamId = DEFAULT_TEAM
     status,
     score,
     teamStats: emptyTeamMatchStats(),
+    notes: "",
+    lineupSheets: null,
     lineup: defaultLineup(),
     formation: DEFAULT_FORMATION,
     plan: emptyPlan()
@@ -309,6 +314,8 @@ function loadState() {
         ...item,
         teamId: item.teamId || DEFAULT_TEAM_ID,
         teamStats: normalizeTeamMatchStats(item.teamStats),
+        notes: item.notes || "",
+        lineupSheets: normalizeLineupSheets(item.lineupSheets, item),
         lineup: item.lineup || {},
         formation: item.formation || DEFAULT_FORMATION,
         plan: normalizePlan(item.plan)
@@ -582,6 +589,12 @@ function fromRemoteMatch(item, lineupData, plan) {
     status: item.status,
     score: item.score || "",
     teamStats: normalizeTeamMatchStats(lineupData?.teamStats),
+    notes: lineupData?.notes || "",
+    lineupSheets: normalizeLineupSheets(lineupData?.lineupSheets, {
+      ...item,
+      teamId: lineupData?.teamId || DEFAULT_TEAM_ID,
+      lineup: lineupData?.lineup || {}
+    }),
     lineup: lineupData?.lineup || {},
     formation: lineupData?.formation || DEFAULT_FORMATION,
     plan: normalizePlan(plan)
@@ -596,7 +609,9 @@ function toRemoteLineup(item) {
       [FORMATION_STORAGE_KEY]: item.formation || DEFAULT_FORMATION,
       __teamId: item.teamId || DEFAULT_TEAM_ID,
       __teamName: teamName(item.teamId),
-      __teamStats: normalizeTeamMatchStats(item.teamStats)
+      __teamStats: normalizeTeamMatchStats(item.teamStats),
+      __matchNotes: item.notes || "",
+      __lineupSheets: normalizeLineupSheets(item.lineupSheets, item)
     },
     updated_at: new Date().toISOString()
   };
@@ -608,11 +623,15 @@ function parseRemoteLineup(value) {
   const teamId = lineup.__teamId || DEFAULT_TEAM_ID;
   const remoteTeamName = lineup.__teamName || "";
   const teamStats = normalizeTeamMatchStats(lineup.__teamStats);
+  const notes = lineup.__matchNotes || "";
+  const lineupSheets = lineup.__lineupSheets || null;
   delete lineup[FORMATION_STORAGE_KEY];
   delete lineup.__teamId;
   delete lineup.__teamName;
   delete lineup.__teamStats;
-  return { lineup, formation, teamId, teamName: remoteTeamName, teamStats };
+  delete lineup.__matchNotes;
+  delete lineup.__lineupSheets;
+  return { lineup, formation, teamId, teamName: remoteTeamName, teamStats, notes, lineupSheets };
 }
 
 function toRemotePlan(item) {
@@ -1259,7 +1278,7 @@ function renderMatches() {
   views.matches.querySelectorAll("[data-open-match]").forEach((button) => {
     button.addEventListener("click", () => {
       state.selectedMatchId = button.dataset.openMatch;
-      state.activeDetailTab = "lineup";
+      state.activeDetailTab = "plan";
       setView("detail");
     });
   });
@@ -1312,8 +1331,9 @@ function renderMatchDetail() {
       </div>
     </div>
     <div class="detail-tabs">
-      <button class="detail-tab ${state.activeDetailTab === "lineup" ? "active" : ""}" data-detail-tab="lineup" type="button">Alineación</button>
       <button class="detail-tab ${state.activeDetailTab === "plan" ? "active" : ""}" data-detail-tab="plan" type="button">Plan de partido</button>
+      <button class="detail-tab ${state.activeDetailTab === "lineup" ? "active" : ""}" data-detail-tab="lineup" type="button">Alineación</button>
+      <button class="detail-tab ${state.activeDetailTab === "information" ? "active" : ""}" data-detail-tab="information" type="button">Información del partido</button>
     </div>
     <div id="detail-body"></div>
   `;
@@ -1330,7 +1350,8 @@ function renderMatchDetail() {
 
   const body = views.detail.querySelector("#detail-body");
   if (state.activeDetailTab === "plan") renderPlan(item, body);
-  else renderLineup(item, body);
+  else if (state.activeDetailTab === "information") renderMatchInformation(item, body);
+  else renderLineupEditor(item, body);
 }
 
 function renderStandings() {
@@ -1576,6 +1597,202 @@ function renderPlayerStatisticsRow(item) {
       <td>${item.recoveries}</td>
     </tr>
   `;
+}
+
+function normalizeLineupSheets(value, matchItem) {
+  const normalizeRows = (rows) =>
+    (Array.isArray(rows) ? rows : []).map((row) => ({
+      playerId: row?.playerId || "",
+      name: row?.name || "",
+      role: row?.role === "substitute" ? "substitute" : "starter",
+      changeMinute: row?.changeMinute === "" || row?.changeMinute == null
+        ? ""
+        : clamp(nonNegativeInteger(row.changeMinute), 0, 130)
+    }));
+  if (value?.home || value?.away) {
+    return {
+      home: normalizeRows(value.home),
+      away: normalizeRows(value.away)
+    };
+  }
+
+  const ownRows = Object.keys(matchItem?.lineup || {})
+    .filter((playerId) => !playerId.startsWith("__"))
+    .map((playerId) => ({ playerId, name: "", role: "starter", changeMinute: "" }));
+  return ownTeamSide(matchItem) === "away"
+    ? { home: [], away: ownRows }
+    : { home: ownRows, away: [] };
+}
+
+function ownTeamSide(item) {
+  const selectedTeamName = teamName(item?.teamId);
+  return item?.away === selectedTeamName ? "away" : "home";
+}
+
+function renderLineupEditor(item, body) {
+  item.lineupSheets = normalizeLineupSheets(item.lineupSheets, item);
+  body.innerHTML = `
+    <div class="lineup-editor-grid">
+      ${renderTeamLineupSheet(item, "home", item.home)}
+      ${renderTeamLineupSheet(item, "away", item.away)}
+    </div>
+  `;
+
+  body.querySelectorAll("[data-add-lineup-row]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const side = button.dataset.addLineupRow;
+      const rows = item.lineupSheets[side];
+      const ownSide = ownTeamSide(item);
+      if (side === ownSide) {
+        const used = new Set(rows.map((row) => row.playerId));
+        const available = activePlayers().find((playerItem) => !used.has(playerItem.id));
+        if (!available) return alert("No quedan jugadores disponibles para añadir.");
+        rows.push({
+          playerId: available.id,
+          name: "",
+          role: rows.filter((row) => row.role === "starter").length < 11 ? "starter" : "substitute",
+          changeMinute: ""
+        });
+      } else {
+        rows.push({
+          playerId: "",
+          name: "",
+          role: rows.filter((row) => row.role === "starter").length < 11 ? "starter" : "substitute",
+          changeMinute: ""
+        });
+      }
+      syncLegacyLineup(item);
+      saveState();
+      render();
+    });
+  });
+
+  body.querySelectorAll("[data-lineup-player]").forEach((input) => {
+    input.addEventListener("change", () => {
+      const row = item.lineupSheets[input.dataset.lineupSide][Number(input.dataset.lineupPlayer)];
+      if (input.tagName === "SELECT") row.playerId = input.value;
+      else row.name = input.value.trim();
+      syncLegacyLineup(item);
+      saveState();
+    });
+  });
+
+  body.querySelectorAll("[data-lineup-role]").forEach((select) => {
+    select.addEventListener("change", () => {
+      const side = select.dataset.lineupSide;
+      const rowIndex = Number(select.dataset.lineupRole);
+      const rows = item.lineupSheets[side];
+      if (select.value === "starter" && rows.filter((row, index) => index !== rowIndex && row.role === "starter").length >= 11) {
+        select.value = "substitute";
+        alert("Solo puede haber 11 titulares por equipo.");
+      }
+      rows[rowIndex].role = select.value;
+      syncLegacyLineup(item);
+      saveState();
+      render();
+    });
+  });
+
+  body.querySelectorAll("[data-lineup-minute]").forEach((input) => {
+    input.addEventListener("change", () => {
+      const row = item.lineupSheets[input.dataset.lineupSide][Number(input.dataset.lineupMinute)];
+      row.changeMinute = input.value === "" ? "" : clamp(nonNegativeInteger(input.value), 0, 130);
+      saveState();
+    });
+  });
+
+  body.querySelectorAll("[data-remove-lineup-row]").forEach((button) => {
+    button.addEventListener("click", () => {
+      item.lineupSheets[button.dataset.lineupSide].splice(Number(button.dataset.removeLineupRow), 1);
+      syncLegacyLineup(item);
+      saveState();
+      render();
+    });
+  });
+}
+
+function renderTeamLineupSheet(item, side, name) {
+  const rows = item.lineupSheets[side];
+  const isOwnTeam = side === ownTeamSide(item);
+  const starters = rows.filter((row) => row.role === "starter").length;
+  return `
+    <section class="panel lineup-sheet">
+      <div class="lineup-sheet-heading">
+        <div>
+          <span class="eyebrow">${side === "home" ? "Equipo local" : "Equipo visitante"}</span>
+          <h2>${escapeHtml(name)}</h2>
+        </div>
+        <span class="lineup-count ${starters === 11 ? "complete" : ""}">${starters}/11 titulares</span>
+      </div>
+      <div class="lineup-sheet-labels">
+        <span>Jugador</span>
+        <span>Condición</span>
+        <span>Minuto cambio</span>
+        <span></span>
+      </div>
+      <div class="lineup-sheet-rows">
+        ${
+          rows.length
+            ? rows.map((row, index) => renderLineupSheetRow(row, index, side, isOwnTeam)).join("")
+            : `<div class="empty-state">Todavía no hay jugadores añadidos.</div>`
+        }
+      </div>
+      <button class="secondary-button" data-add-lineup-row="${side}" type="button">Añadir jugador</button>
+    </section>
+  `;
+}
+
+function renderLineupSheetRow(row, index, side, isOwnTeam) {
+  const playerControl = isOwnTeam
+    ? `<select data-lineup-player="${index}" data-lineup-side="${side}">
+        ${activePlayers()
+          .map((playerItem) => `<option value="${playerItem.id}" ${playerItem.id === row.playerId ? "selected" : ""}>${playerItem.number}. ${escapeHtml(playerItem.name)}</option>`)
+          .join("")}
+      </select>`
+    : `<input data-lineup-player="${index}" data-lineup-side="${side}" value="${escapeAttr(row.name)}" maxlength="80" placeholder="Nombre del jugador" />`;
+  return `
+    <div class="lineup-sheet-row">
+      ${playerControl}
+      <select data-lineup-role="${index}" data-lineup-side="${side}">
+        <option value="starter" ${row.role === "starter" ? "selected" : ""}>Titular</option>
+        <option value="substitute" ${row.role === "substitute" ? "selected" : ""}>Suplente</option>
+      </select>
+      <input data-lineup-minute="${index}" data-lineup-side="${side}" type="number" min="0" max="130" value="${row.changeMinute}" placeholder="-" />
+      <button class="icon-button" data-remove-lineup-row="${index}" data-lineup-side="${side}" type="button" aria-label="Quitar jugador">×</button>
+    </div>
+  `;
+}
+
+function syncLegacyLineup(item) {
+  const ownRows = item.lineupSheets[ownTeamSide(item)] || [];
+  const previous = item.lineup || {};
+  item.lineup = {};
+  ownRows.forEach((row, index) => {
+    if (!row.playerId) return;
+    item.lineup[row.playerId] = previous[row.playerId] || FORMATIONS[DEFAULT_FORMATION].slots[index % 11];
+  });
+}
+
+function renderMatchInformation(item, body) {
+  body.innerHTML = `
+    <section class="panel match-information-panel">
+      <div class="section-intro">
+        <div>
+          <p class="eyebrow">Apuntes del entrenador</p>
+          <h2>Información del partido</h2>
+        </div>
+        <span class="meta">Los cambios se guardan automáticamente</span>
+      </div>
+      <label>
+        Notas y observaciones
+        <textarea id="match-notes" maxlength="12000" placeholder="Análisis del partido, incidencias, conclusiones y aspectos a mejorar...">${escapeHtml(item.notes || "")}</textarea>
+      </label>
+    </section>
+  `;
+  body.querySelector("#match-notes").addEventListener("input", (event) => {
+    item.notes = event.target.value;
+    saveState();
+  });
 }
 
 function renderLineup(item, body) {
@@ -1834,7 +2051,13 @@ function deletePlayer(id) {
   const item = state.players.find((playerItem) => playerItem.id === id);
   if (!item || !confirm(`¿Eliminar a ${item.name}?`)) return;
   state.players = state.players.filter((playerItem) => playerItem.id !== id);
-  activeMatches().forEach((matchItem) => delete matchItem.lineup[id]);
+  activeMatches().forEach((matchItem) => {
+    delete matchItem.lineup[id];
+    if (matchItem.lineupSheets) {
+      const side = ownTeamSide(matchItem);
+      matchItem.lineupSheets[side] = matchItem.lineupSheets[side].filter((row) => row.playerId !== id);
+    }
+  });
   saveState();
   supabaseDeletePlayerPhoto(item.photoPath);
   supabaseDelete("players", "id", id);

@@ -1421,6 +1421,74 @@ button {
   gap: 16px;
 }
 
+.lineup-editor-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.lineup-sheet {
+  display: grid;
+  align-content: start;
+  gap: 14px;
+}
+
+.lineup-sheet-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.lineup-sheet-heading h2,
+.lineup-sheet-heading p {
+  margin: 0;
+}
+
+.lineup-count {
+  padding: 6px 9px;
+  border-radius: 999px;
+  color: #8b3b22;
+  background: #fff0e8;
+  font-size: .75rem;
+  font-weight: 850;
+  white-space: nowrap;
+}
+
+.lineup-count.complete {
+  color: var(--green);
+  background: #e9f6f0;
+}
+
+.lineup-sheet-labels,
+.lineup-sheet-row {
+  display: grid;
+  grid-template-columns: minmax(150px, 1fr) 120px 110px 38px;
+  gap: 8px;
+  align-items: center;
+}
+
+.lineup-sheet-labels {
+  color: var(--muted);
+  font-size: .68rem;
+  font-weight: 850;
+  text-transform: uppercase;
+}
+
+.lineup-sheet-rows {
+  display: grid;
+  gap: 8px;
+}
+
+.lineup-sheet-row input,
+.lineup-sheet-row select {
+  min-width: 0;
+}
+
+.match-information-panel textarea {
+  min-height: 420px;
+}
+
 .lineup-heading {
   display: flex;
   align-items: end;
@@ -1788,6 +1856,7 @@ button:focus-visible {
 
   .app-shell,
   .lineup-layout,
+  .lineup-editor-grid,
   .plan-grid,
   .page-context,
   .statistics-grid,
@@ -1894,6 +1963,19 @@ button:focus-visible {
 }
 
 @media (max-width: 560px) {
+  .detail-tabs {
+    overflow-x: auto;
+    white-space: nowrap;
+  }
+
+  .lineup-sheet-labels {
+    display: none;
+  }
+
+  .lineup-sheet-row {
+    grid-template-columns: 1fr 1fr 80px 38px;
+  }
+
   .team-summary-strip {
     grid-template-columns: repeat(5, minmax(270px, 84vw));
   }
