@@ -72,6 +72,7 @@ let draggedPlayerId = null;
 let remoteSaveTimer = null;
 let isPullingRemote = false;
 let supportsRemotePlayerProfiles = false;
+let returnToPlayerReportsAfterMatchSave = false;
 
 const views = {
   squad: document.querySelector("#squad-view"),
@@ -210,7 +211,15 @@ matchForm.addEventListener("submit", (event) => {
   state.activeDetailTab = "plan";
   saveState();
   matchDialog.close();
-  setView("detail");
+  if (returnToPlayerReportsAfterMatchSave) {
+    returnToPlayerReportsAfterMatchSave = false;
+    state.activeView = "playerDetail";
+    state.activePlayerTab = "reports";
+    saveState();
+    render();
+  } else {
+    setView("detail");
+  }
 });
 
 render();
@@ -1282,12 +1291,18 @@ function renderPlayerReports(item, body) {
                   `;
                 })
                 .join("")
-            : `<div class="empty-state">Crea partidos para añadir informes individuales.</div>`
+            : `<div class="empty-state">
+                <p>Este equipo todavía no tiene partidos. Crea el primero para rellenar el informe y las estadísticas de ${escapeHtml(item.name)}.</p>
+                <button class="primary-button" id="create-match-from-player-report" type="button">Crear primer partido</button>
+              </div>`
         }
       </div>
     </section>
   `;
 
+  body.querySelector("#create-match-from-player-report")?.addEventListener("click", () => {
+    openMatchDialog("", true);
+  });
   body.querySelectorAll("[data-player-report-text]").forEach((textarea) => {
     textarea.addEventListener("input", () => {
       const report = ensurePlayerReport(item, textarea.dataset.playerReportText);
@@ -2169,7 +2184,8 @@ function openPlayerDialog(id) {
   playerDialog.showModal();
 }
 
-function openMatchDialog(id) {
+function openMatchDialog(id, returnToPlayerReports = false) {
+  returnToPlayerReportsAfterMatchSave = returnToPlayerReports;
   const item = state.matches.find((matchItem) => matchItem.id === id);
   document.querySelector("#match-modal-title").textContent = item ? "Editar partido" : "Nuevo partido";
   document.querySelector("#match-id").value = item?.id || "";
