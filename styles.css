@@ -1677,6 +1677,12 @@ button {
   grid-template-columns: 1fr 1fr;
 }
 
+.plan-grid > .panel {
+  display: grid;
+  align-content: start;
+  gap: 14px;
+}
+
 textarea {
   width: 100%;
   min-height: 220px;

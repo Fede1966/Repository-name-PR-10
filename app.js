@@ -7,6 +7,14 @@ const TEAM_NAME = "Athletic Club";
 const DEFAULT_TEAM_ID = "athletic-club";
 const DEFAULT_FORMATION = "1442";
 const FORMATION_STORAGE_KEY = "__formation";
+const PLAN_SECTIONS = [
+  ["offensive", "Acciones ofensivas"],
+  ["defensive", "Acciones defensivas"],
+  ["offensiveTransition", "Transiciones ofensivas"],
+  ["defensiveTransition", "Transiciones defensivas"],
+  ["offensiveSetPieces", "ABP ofensivas"],
+  ["defensiveSetPieces", "ABP defensivas"]
+];
 const FORMATIONS = {
   "1442": {
     label: "1-4-4-2",
@@ -255,12 +263,23 @@ function defaultLineup() {
 }
 
 function emptyPlan() {
-  return {
-    offensiveText: "",
-    defensiveText: "",
-    offensiveVideos: [],
-    defensiveVideos: []
-  };
+  return Object.fromEntries(
+    PLAN_SECTIONS.flatMap(([type]) => [
+      [`${type}Text`, ""],
+      [`${type}Videos`, []]
+    ])
+  );
+}
+
+function normalizePlan(value) {
+  const plan = emptyPlan();
+  PLAN_SECTIONS.forEach(([type]) => {
+    plan[`${type}Text`] = value?.[`${type}Text`] || "";
+    plan[`${type}Videos`] = Array.isArray(value?.[`${type}Videos`])
+      ? value[`${type}Videos`].filter((video) => video && !video.__expandedPlan)
+      : [];
+  });
+  return plan;
 }
 
 function loadState() {
@@ -292,7 +311,7 @@ function loadState() {
         teamStats: normalizeTeamMatchStats(item.teamStats),
         lineup: item.lineup || {},
         formation: item.formation || DEFAULT_FORMATION,
-        plan: { ...emptyPlan(), ...(item.plan || {}) }
+        plan: normalizePlan(item.plan)
       })) || structuredClone(initialState.matches)
     };
   } catch {
@@ -345,12 +364,7 @@ async function pullRemoteState() {
     const lineupByMatch = Object.fromEntries(lineups.map((item) => [item.match_id, parseRemoteLineup(item.lineup)]));
     const planByMatch = {};
     plans.forEach((item) => {
-      planByMatch[item.match_id] = {
-        offensiveText: item.offensive_text || "",
-        defensiveText: item.defensive_text || "",
-        offensiveVideos: item.offensive_videos || [],
-        defensiveVideos: item.defensive_videos || []
-      };
+      planByMatch[item.match_id] = parseRemotePlan(item);
     });
 
     const hasRemotePlayers = players.length > 0;
@@ -570,7 +584,7 @@ function fromRemoteMatch(item, lineupData, plan) {
     teamStats: normalizeTeamMatchStats(lineupData?.teamStats),
     lineup: lineupData?.lineup || {},
     formation: lineupData?.formation || DEFAULT_FORMATION,
-    plan: plan || emptyPlan()
+    plan: normalizePlan(plan)
   };
 }
 
@@ -602,14 +616,33 @@ function parseRemoteLineup(value) {
 }
 
 function toRemotePlan(item) {
+  const plan = normalizePlan(item.plan);
+  const expandedPlan = Object.fromEntries(
+    PLAN_SECTIONS.slice(2).flatMap(([type]) => [
+      [`${type}Text`, plan[`${type}Text`]],
+      [`${type}Videos`, plan[`${type}Videos`]]
+    ])
+  );
   return {
     match_id: item.id,
-    offensive_text: item.plan?.offensiveText || "",
-    defensive_text: item.plan?.defensiveText || "",
-    offensive_videos: item.plan?.offensiveVideos || [],
-    defensive_videos: item.plan?.defensiveVideos || [],
+    offensive_text: plan.offensiveText,
+    defensive_text: plan.defensiveText,
+    offensive_videos: [...plan.offensiveVideos, { __expandedPlan: expandedPlan }],
+    defensive_videos: plan.defensiveVideos,
     updated_at: new Date().toISOString()
   };
+}
+
+function parseRemotePlan(item) {
+  const offensiveVideos = Array.isArray(item.offensive_videos) ? item.offensive_videos : [];
+  const expandedPlan = offensiveVideos.find((video) => video?.__expandedPlan)?.__expandedPlan || {};
+  return normalizePlan({
+    offensiveText: item.offensive_text || "",
+    defensiveText: item.defensive_text || "",
+    offensiveVideos,
+    defensiveVideos: item.defensive_videos || [],
+    ...expandedPlan
+  });
 }
 
 function setView(view) {
@@ -1665,10 +1698,10 @@ function renderBenchPlayer(item) {
 }
 
 function renderPlan(item, body) {
+  item.plan = normalizePlan(item.plan);
   body.innerHTML = `
     <div class="plan-grid">
-      ${renderPlanPanel(item, "offensive", "Acciones ofensivas")}
-      ${renderPlanPanel(item, "defensive", "Acciones defensivas")}
+      ${PLAN_SECTIONS.map(([type, title]) => renderPlanPanel(item, type, title)).join("")}
     </div>
   `;
 
@@ -1707,7 +1740,7 @@ function renderPlanPanel(item, type, title) {
       <h2>${title}</h2>
       <label>
         Plan
-        <textarea data-plan-type="${type}" placeholder="Escribe aquí el plan ${type === "offensive" ? "ofensivo" : "defensivo"}...">${escapeHtml(item.plan[`${type}Text`] || "")}</textarea>
+        <textarea data-plan-type="${type}" placeholder="Escribe aquí las indicaciones de ${title.toLowerCase()}...">${escapeHtml(item.plan[`${type}Text`] || "")}</textarea>
       </label>
       <div class="video-row">
         <input data-video-url type="url" placeholder="URL de vídeo" />
