@@ -690,6 +690,38 @@ button {
   margin: 0;
 }
 
+.player-report-heading-actions {
+  display: flex;
+  align-items: flex-end;
+  gap: 10px;
+}
+
+.match-rating-control {
+  min-width: 112px;
+  font-size: .72rem;
+  text-transform: uppercase;
+}
+
+.match-rating-control > span {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.match-rating-control input {
+  width: 68px;
+  min-height: 34px;
+  padding: 6px 8px;
+  font-size: 1rem;
+  font-weight: 850;
+}
+
+.match-rating-control small {
+  color: var(--muted);
+  font-size: .72rem;
+  white-space: nowrap;
+}
+
 .report-status {
   flex: 0 0 auto;
   padding: 6px 9px;
@@ -2018,6 +2050,11 @@ button:focus-visible {
   .player-report-heading {
     align-items: stretch;
     flex-direction: column;
+  }
+
+  .player-report-heading-actions {
+    align-items: stretch;
+    justify-content: space-between;
   }
 
   .player-profile-card {

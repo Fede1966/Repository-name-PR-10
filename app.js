@@ -1121,7 +1121,16 @@ function renderPlayerReports(item, body) {
                           <h3>${escapeHtml(matchItem.home)} vs ${escapeHtml(matchItem.away)}</h3>
                           <p class="meta">${matchItem.date ? formatDate(matchItem.date) : "Fecha pendiente"} · ${escapeHtml(matchItem.score || "Sin resultado")}</p>
                         </div>
-                        <span class="report-status ${inLineup ? "included" : ""}">${inLineup ? "En alineación" : "No alineado"}</span>
+                        <div class="player-report-heading-actions">
+                          <label class="match-rating-control">
+                            Valoración
+                            <span>
+                              <input data-player-report-rating="${matchItem.id}" type="number" min="1" max="10" step="0.5" value="${report.rating || ""}" placeholder="-" />
+                              <small>/ 10</small>
+                            </span>
+                          </label>
+                          <span class="report-status ${inLineup ? "included" : ""}">${inLineup ? "En alineación" : "No alineado"}</span>
+                        </div>
                       </div>
                       <label>
                         Informe individual
@@ -1181,6 +1190,14 @@ function renderPlayerReports(item, body) {
       report[key] = clamp(Math.round(Number(input.value) || 0), 0, maximum);
       saveState();
       markPlayerReportPending(body, input.dataset.playerReportStat);
+    });
+  });
+  body.querySelectorAll("[data-player-report-rating]").forEach((input) => {
+    input.addEventListener("input", () => {
+      const report = ensurePlayerReport(item, input.dataset.playerReportRating);
+      report.rating = input.value === "" ? 0 : clamp(Number(input.value) || 0, 1, 10);
+      saveState();
+      markPlayerReportPending(body, input.dataset.playerReportRating);
     });
   });
   body.querySelectorAll("[data-player-report-youtube]").forEach((input) => {
@@ -2188,6 +2205,7 @@ function normalizePlayerReports(reports) {
         {
           ...emptyPlayerReport(),
           text: value?.text || "",
+          rating: clamp(Number(value?.rating) || 0, 0, 10),
           minutes: clamp(Number(value?.minutes) || 0, 0, 130),
           youtube: value?.youtube || "",
           completedPasses: nonNegativeInteger(value?.completedPasses),
@@ -2207,6 +2225,7 @@ function normalizePlayerReports(reports) {
 function emptyPlayerReport() {
   return {
     text: "",
+    rating: 0,
     minutes: 0,
     youtube: "",
     completedPasses: 0,
@@ -2265,6 +2284,7 @@ function playerReport(item, matchId) {
   return {
     ...emptyPlayerReport(),
     text: value?.text || "",
+    rating: clamp(Number(value?.rating) || 0, 0, 10),
     minutes: clamp(Number(value?.minutes) || 0, 0, 130),
     youtube: value?.youtube || "",
     completedPasses: nonNegativeInteger(value?.completedPasses),
@@ -2305,6 +2325,7 @@ function playerReportTotals(item) {
 function playerReportHasData(report) {
   return Boolean(
     report.text.trim() ||
+      report.rating ||
       report.youtube ||
       report.minutes ||
       report.completedPasses ||
@@ -2439,7 +2460,7 @@ async function downloadPlayerPdf(item) {
                   ({ match, report }) => `
                     <article class="report">
                       <h3>Jornada ${match.round}: ${escapeHtml(match.home)} vs ${escapeHtml(match.away)}</h3>
-                      <div class="meta">${match.date ? formatDate(match.date) : "Fecha pendiente"} · ${report.minutes} minutos</div>
+                      <div class="meta">${match.date ? formatDate(match.date) : "Fecha pendiente"} · ${report.minutes} minutos · Valoración ${report.rating ? `${report.rating} / 10` : "Sin valorar"}</div>
                       <div class="report-stats">
                         ${renderPdfReportStat("Pases correctos", report.completedPasses)}
                         ${renderPdfReportStat("Pases fallados", report.failedPasses)}
