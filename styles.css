@@ -748,6 +748,52 @@ button {
   margin-top: 12px;
 }
 
+.report-card-toggle {
+  display: flex;
+  min-height: 44px;
+  align-items: center;
+  grid-template-columns: none;
+  gap: 9px;
+  padding: 9px 11px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+  cursor: pointer;
+}
+
+.report-card-toggle input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+}
+
+.card-symbol {
+  width: 16px;
+  height: 22px;
+  flex: 0 0 auto;
+  border: 2px solid #c2c7cd;
+  border-radius: 3px;
+  transform: rotate(5deg);
+}
+
+.report-card-toggle input:checked + .card-symbol {
+  border-color: transparent;
+}
+
+.report-card-toggle.yellow input:checked + .card-symbol {
+  background: #f1d400;
+}
+
+.report-card-toggle.red input:checked + .card-symbol {
+  background: #df1533;
+}
+
+.report-card-toggle input:focus-visible + .card-symbol {
+  outline: 3px solid rgba(18, 91, 216, .28);
+  outline-offset: 2px;
+}
+
 .report-data-grid label:last-child {
   grid-column: span 2;
 }

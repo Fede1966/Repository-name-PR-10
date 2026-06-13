@@ -1018,6 +1018,10 @@ function renderPlayerStatistics(item, body) {
         ${renderPlayerStatCard("Recuperaciones", totals.recoveries, "RE", [
           `${totals.losses} pérdidas`
         ])}
+        ${renderPlayerStatCard("Tarjetas", totals.yellowCards + totals.redCards, "TA", [
+          `${totals.yellowCards} amarillas`,
+          `${totals.redCards} rojas`
+        ])}
       </div>
       <div class="player-stat-summary">
         <div>
@@ -1146,6 +1150,8 @@ function renderPlayerReports(item, body) {
                         ${renderReportStatInput(matchItem.id, "assists", "Asistencias de gol", report.assists)}
                         ${renderReportStatInput(matchItem.id, "shotsOnTarget", "Tiros a puerta", report.shotsOnTarget)}
                         ${renderReportStatInput(matchItem.id, "goalPasses", "Pases de gol", report.goalPasses)}
+                        ${renderReportCardToggle(matchItem.id, "yellowCard", "Tarjeta amarilla", report.yellowCard, "yellow")}
+                        ${renderReportCardToggle(matchItem.id, "redCard", "Tarjeta roja", report.redCard, "red")}
                         <label>
                           Vídeo de YouTube
                           <input data-player-report-youtube="${matchItem.id}" type="url" value="${escapeAttr(report.youtube)}" placeholder="https://www.youtube.com/watch?v=..." />
@@ -1198,6 +1204,14 @@ function renderPlayerReports(item, body) {
       report.rating = input.value === "" ? 0 : clamp(Number(input.value) || 0, 1, 10);
       saveState();
       markPlayerReportPending(body, input.dataset.playerReportRating);
+    });
+  });
+  body.querySelectorAll("[data-player-report-card]").forEach((input) => {
+    input.addEventListener("change", () => {
+      const report = ensurePlayerReport(item, input.dataset.playerReportCard);
+      report[input.dataset.reportCard] = input.checked;
+      saveState();
+      markPlayerReportPending(body, input.dataset.playerReportCard);
     });
   });
   body.querySelectorAll("[data-player-report-youtube]").forEach((input) => {
@@ -1256,6 +1270,21 @@ function renderReportStatInput(matchId, key, label, value, max = 9999) {
         value="${value || ""}"
         placeholder="0"
       />
+    </label>
+  `;
+}
+
+function renderReportCardToggle(matchId, key, label, checked, color) {
+  return `
+    <label class="report-card-toggle ${color}">
+      <input
+        data-player-report-card="${matchId}"
+        data-report-card="${key}"
+        type="checkbox"
+        ${checked ? "checked" : ""}
+      />
+      <span class="card-symbol" aria-hidden="true"></span>
+      <strong>${escapeHtml(label)}</strong>
     </label>
   `;
 }
@@ -2206,6 +2235,8 @@ function normalizePlayerReports(reports) {
           ...emptyPlayerReport(),
           text: value?.text || "",
           rating: clamp(Number(value?.rating) || 0, 0, 10),
+          yellowCard: Boolean(value?.yellowCard),
+          redCard: Boolean(value?.redCard),
           minutes: clamp(Number(value?.minutes) || 0, 0, 130),
           youtube: value?.youtube || "",
           completedPasses: nonNegativeInteger(value?.completedPasses),
@@ -2226,6 +2257,8 @@ function emptyPlayerReport() {
   return {
     text: "",
     rating: 0,
+    yellowCard: false,
+    redCard: false,
     minutes: 0,
     youtube: "",
     completedPasses: 0,
@@ -2285,6 +2318,8 @@ function playerReport(item, matchId) {
     ...emptyPlayerReport(),
     text: value?.text || "",
     rating: clamp(Number(value?.rating) || 0, 0, 10),
+    yellowCard: Boolean(value?.yellowCard),
+    redCard: Boolean(value?.redCard),
     minutes: clamp(Number(value?.minutes) || 0, 0, 130),
     youtube: value?.youtube || "",
     completedPasses: nonNegativeInteger(value?.completedPasses),
@@ -2309,13 +2344,15 @@ function playerMinutesPlayed(item) {
 }
 
 function playerReportTotals(item) {
-  const keys = ["minutes", "completedPasses", "failedPasses", "losses", "recoveries", "goals", "assists", "shotsOnTarget", "goalPasses"];
+  const keys = ["minutes", "completedPasses", "failedPasses", "losses", "recoveries", "goals", "assists", "shotsOnTarget", "goalPasses", "yellowCards", "redCards"];
   return activeMatches().reduce(
     (totals, matchItem) => {
       const report = playerReport(item, matchItem.id);
-      keys.forEach((key) => {
+      keys.slice(0, -2).forEach((key) => {
         totals[key] += report[key];
       });
+      totals.yellowCards += report.yellowCard ? 1 : 0;
+      totals.redCards += report.redCard ? 1 : 0;
       return totals;
     },
     Object.fromEntries(keys.map((key) => [key, 0]))
@@ -2326,6 +2363,8 @@ function playerReportHasData(report) {
   return Boolean(
     report.text.trim() ||
       report.rating ||
+      report.yellowCard ||
+      report.redCard ||
       report.youtube ||
       report.minutes ||
       report.completedPasses ||
@@ -2449,6 +2488,8 @@ async function downloadPlayerPdf(item) {
           ${renderPdfMetric("Pases fallados", totals.failedPasses)}
           ${renderPdfMetric("Pérdidas", totals.losses)}
           ${renderPdfMetric("Recuperaciones", totals.recoveries)}
+          ${renderPdfMetric("Tarjetas amarillas", totals.yellowCards)}
+          ${renderPdfMetric("Tarjetas rojas", totals.redCards)}
         </div>
         <h2>Trayectoria</h2>
         <div class="description">${escapeHtml(item.career || `${currentTeam().name} · Temporada 2026`)}</div>
@@ -2470,6 +2511,8 @@ async function downloadPlayerPdf(item) {
                         ${renderPdfReportStat("Asistencias de gol", report.assists)}
                         ${renderPdfReportStat("Tiros a puerta", report.shotsOnTarget)}
                         ${renderPdfReportStat("Pases de gol", report.goalPasses)}
+                        ${renderPdfReportStat("Tarjeta amarilla", report.yellowCard ? "Sí" : "No")}
+                        ${renderPdfReportStat("Tarjeta roja", report.redCard ? "Sí" : "No")}
                       </div>
                       ${report.text ? `<p>${escapeHtml(report.text)}</p>` : ""}
                       ${report.youtube ? `<p><a href="${escapeAttr(report.youtube)}">${escapeHtml(report.youtube)}</a></p>` : ""}
