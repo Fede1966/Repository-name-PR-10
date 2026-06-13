@@ -2277,16 +2277,22 @@ function normalizeTeamMatchStats(value) {
 }
 
 function calculateTeamMatchStats() {
-  return activeMatches().reduce(
+  const totals = activeMatches().reduce(
     (totals, item) => {
       const stats = normalizeTeamMatchStats(item.teamStats);
-      Object.keys(totals).forEach((key) => {
+      ["penaltiesFor", "penaltiesAgainst", "chancesCreated", "chancesAgainst"].forEach((key) => {
         totals[key] += stats[key];
       });
       return totals;
     },
     emptyTeamMatchStats()
   );
+  activePlayers().forEach((item) => {
+    const playerTotals = playerReportTotals(item);
+    totals.yellowCards += playerTotals.yellowCards;
+    totals.redCards += playerTotals.redCards;
+  });
+  return totals;
 }
 
 function nonNegativeInteger(value) {
