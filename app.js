@@ -982,6 +982,12 @@ function renderPlayerDetail() {
 function renderPlayerStatistics(item, body) {
   const appearances = activeMatches().filter((matchItem) => matchItem.lineup?.[item.id]);
   const playedAppearances = appearances.filter((matchItem) => Boolean(parseScore(matchItem.score)));
+  const starts = activeMatches().filter((matchItem) => {
+    const sheets = normalizeLineupSheets(matchItem.lineupSheets, matchItem);
+    return sheets[ownTeamSide(matchItem)].some(
+      (row) => row.playerId === item.id && row.role === "starter"
+    );
+  }).length;
   const totals = playerReportTotals(item);
   const latestAppearance = appearances
     .slice()
@@ -1000,7 +1006,7 @@ function renderPlayerStatistics(item, body) {
         </div>
       </div>
       <div class="player-stat-cards">
-        ${renderFeaturedPlayerStat(playedAppearances.length, totals.minutes, appearances.length)}
+        ${renderFeaturedPlayerStat(playedAppearances.length, totals.minutes, starts)}
         ${renderPlayerStatCard("Goles marcados", totals.goals, "GO")}
         ${renderPlayerStatCard("Asistencias de gol", totals.assists, "AS")}
         ${renderPlayerStatCard("Tiros a puerta", totals.shotsOnTarget, "TP")}
@@ -1031,7 +1037,7 @@ function renderPlayerStatistics(item, body) {
   `;
 }
 
-function renderFeaturedPlayerStat(matches, minutes, lineups) {
+function renderFeaturedPlayerStat(matches, minutes, starts) {
   return `
     <article class="player-stat-card featured">
       <div class="player-stat-card-title"><span>PO</span> Partidos oficiales</div>
@@ -1039,7 +1045,7 @@ function renderFeaturedPlayerStat(matches, minutes, lineups) {
         <strong>${matches}</strong>
         <div>
           <span>${minutes.toLocaleString("es-ES")} min. jugados</span>
-          <span>${lineups} alineaciones</span>
+          <span>${starts} titularidades</span>
         </div>
       </div>
     </article>
