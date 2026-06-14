@@ -1285,6 +1285,11 @@ function renderPlayerReports(item, body) {
                       }
                       <div class="report-save-row">
                         <span class="report-save-status" data-report-save-status="${matchItem.id}">Cambios guardados automáticamente</span>
+                        ${
+                          playerReportHasData(report)
+                            ? `<button class="danger-button" data-delete-player-report="${matchItem.id}" type="button">Eliminar informe</button>`
+                            : ""
+                        }
                         <button class="primary-button" data-save-player-report="${matchItem.id}" type="button">Guardar informe</button>
                       </div>
                     </article>
@@ -1360,6 +1365,30 @@ function renderPlayerReports(item, body) {
         button.disabled = false;
         button.textContent = "Guardar informe";
       }
+    });
+  });
+  body.querySelectorAll("[data-delete-player-report]").forEach((button) => {
+    button.addEventListener("click", async () => {
+      const matchId = button.dataset.deletePlayerReport;
+      const matchItem = matches.find((candidate) => candidate.id === matchId);
+      const matchLabel = matchItem
+        ? `Jornada ${matchItem.round}: ${matchItem.home} vs ${matchItem.away}`
+        : "este partido";
+      if (!confirm(`¿Eliminar el informe de ${item.name} para ${matchLabel}? Se borrarán también sus estadísticas, valoración y vídeo.`)) {
+        return;
+      }
+
+      item.reports = normalizePlayerReports(item.reports);
+      delete item.reports[matchId];
+      saveState();
+      clearTimeout(remoteSaveTimer);
+      try {
+        await pushRemoteState(true);
+      } catch (error) {
+        console.error(error);
+        alert("El informe se ha eliminado en este dispositivo, pero queda pendiente de sincronizar.");
+      }
+      render();
     });
   });
 }
