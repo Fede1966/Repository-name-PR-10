@@ -5,9 +5,25 @@ const SUPABASE_ANON_KEY =
 const PLAYER_PHOTOS_BUCKET = "player-photos";
 const TEAM_NAME = "Athletic Club";
 const DEFAULT_TEAM_ID = "athletic-club";
+const DEFAULT_VISIBLE_TEAM = {
+  id: "ce-ferreries-cadete-preferente",
+  name: "CE Ferreries Cadete Preferente"
+};
 const DEFAULT_FORMATION = "1442";
 const FORMATION_STORAGE_KEY = "__formation";
 const APP_STATE_MATCH_ID = "__app_state__";
+const REMOVED_TEAM_IDS = new Set(["athletic-club", "ce-ferreries-cadete-a"]);
+const REMOVED_MATCH_IDS = new Set(["b7023b94-d831-4795-aab4-c861b3a7a7cd"]);
+const FINAL_STANDINGS = [
+  { name: 'CF SPORTING DE MAHON "A"', played: 14, won: 11, drawn: 1, lost: 2, points: 34 },
+  { name: 'UD MAHON "A"', played: 14, won: 9, drawn: 0, lost: 5, points: 27 },
+  { name: 'CIUTADELLA C.E. "A"', played: 14, won: 9, drawn: 0, lost: 5, points: 27 },
+  { name: 'CE FERRERIES "A"', played: 14, won: 8, drawn: 2, lost: 4, points: 26 },
+  { name: 'PENYA CIUTADELLA ESPORTIVA "A"', played: 14, won: 5, drawn: 4, lost: 5, points: 19 },
+  { name: 'CD MENORCA "B"', played: 14, won: 4, drawn: 2, lost: 8, points: 14 },
+  { name: "CE ALAIOR", played: 14, won: 3, drawn: 3, lost: 8, points: 12 },
+  { name: 'CE MERCADAL "B"', played: 14, won: 0, drawn: 2, lost: 12, points: 2 }
+];
 const PLAN_SECTIONS = [
   ["offensive", "Acciones ofensivas"],
   ["defensive", "Acciones defensivas"],
@@ -37,8 +53,8 @@ const FORMATIONS = {
 
 const initialState = {
   lastModifiedAt: 0,
-  teams: [{ id: DEFAULT_TEAM_ID, name: TEAM_NAME }],
-  activeTeamId: DEFAULT_TEAM_ID,
+  teams: [DEFAULT_VISIBLE_TEAM],
+  activeTeamId: DEFAULT_VISIBLE_TEAM.id,
   players: [
     player("p1", "Unai Simón", 1, "1997-06-11", "Portero", "Diestro"),
     player("p2", "Aitor Paredes", 4, "2000-04-29", "Defensa", "Diestro"),
@@ -303,7 +319,10 @@ function loadState() {
     const saved = JSON.parse(localStorage.getItem(STORAGE_KEY));
     if (!saved) return structuredClone(initialState);
     const activeView = ["lineups", "gameplan"].includes(saved.activeView) ? "matches" : saved.activeView;
-    const teams = saved.teams?.length ? saved.teams : structuredClone(initialState.teams);
+    const visibleTeams = (saved.teams?.length ? saved.teams : structuredClone(initialState.teams)).filter(
+      (item) => !REMOVED_TEAM_IDS.has(item.id)
+    );
+    const teams = visibleTeams.length ? visibleTeams : structuredClone(initialState.teams);
     const activeTeamId = teams.some((item) => item.id === saved.activeTeamId) ? saved.activeTeamId : teams[0].id;
     return {
       ...structuredClone(initialState),
@@ -322,16 +341,19 @@ function loadState() {
         ratings: normalizePlayerRatings(item.ratings),
         reports: normalizePlayerReports(item.reports)
       })) || structuredClone(initialState.players),
-      matches: saved.matches?.map((item) => ({
-        ...item,
-        teamId: item.teamId || DEFAULT_TEAM_ID,
-        teamStats: normalizeTeamMatchStats(item.teamStats),
-        notes: item.notes || "",
-        lineupSheets: normalizeLineupSheets(item.lineupSheets, item),
-        lineup: item.lineup || {},
-        formation: item.formation || DEFAULT_FORMATION,
-        plan: normalizePlan(item.plan)
-      })) || structuredClone(initialState.matches)
+      matches:
+        saved.matches
+          ?.filter((item) => !REMOVED_MATCH_IDS.has(item.id))
+          .map((item) => ({
+            ...item,
+            teamId: item.teamId || DEFAULT_TEAM_ID,
+            teamStats: normalizeTeamMatchStats(item.teamStats),
+            notes: item.notes || "",
+            lineupSheets: normalizeLineupSheets(item.lineupSheets, item),
+            lineup: item.lineup || {},
+            formation: item.formation || DEFAULT_FORMATION,
+            plan: normalizePlan(item.plan)
+          })) || structuredClone(initialState.matches)
     };
   } catch {
     return structuredClone(initialState);
@@ -388,7 +410,9 @@ async function pullRemoteState() {
     );
     const remoteUpdatedAt = Number(remoteAppState?.updatedAt) || 0;
     const preferLocal = Number(state.lastModifiedAt) > remoteUpdatedAt;
-    const visibleMatches = matches.filter((item) => item.id !== APP_STATE_MATCH_ID);
+    const visibleMatches = matches.filter(
+      (item) => item.id !== APP_STATE_MATCH_ID && !REMOVED_MATCH_IDS.has(item.id)
+    );
     const visibleLineups = lineups.filter((item) => item.match_id !== APP_STATE_MATCH_ID);
     const lineupByMatch = Object.fromEntries(
       visibleLineups.map((item) => [item.match_id, parseRemoteLineup(item.lineup)])
@@ -416,7 +440,9 @@ async function pullRemoteState() {
           const remoteMatch = fromRemoteMatch(item, lineupByMatch[item.id], planByMatch[item.id]);
           return preferLocal && localMatches.has(item.id) ? localMatches.get(item.id) : remoteMatch;
         }),
-        ...state.matches.filter((item) => !remoteMatchIds.has(item.id))
+        ...state.matches.filter(
+          (item) => !remoteMatchIds.has(item.id) && !REMOVED_MATCH_IDS.has(item.id)
+        )
       ];
     } else if (!state.matches.length) {
       state.matches = structuredClone(initialState.matches);
@@ -429,8 +455,6 @@ async function pullRemoteState() {
     state.selectedMatchId = selectedMatch()?.id || "";
     localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
     render();
-    isPullingRemote = false;
-    await pushRemoteState();
   } catch (error) {
     console.error(error);
   } finally {
@@ -447,6 +471,7 @@ function settledValue(result, fallback) {
 async function pushRemoteState(throwOnError = false) {
   if (!hasSupabaseConfig()) return;
   try {
+    state.matches = state.matches.filter((item) => !REMOVED_MATCH_IDS.has(item.id));
     await supabaseUpsert("players", state.players.map(toRemotePlayer), "id");
     await supabaseUpsert("matches", [...state.matches.map(toRemoteMatch), toRemoteAppStateMatch()], "id");
     await supabaseUpsert("lineups", [...state.matches.map(toRemoteLineup), toRemoteAppStateLineup()], "match_id");
@@ -588,8 +613,8 @@ function fromRemotePlayer(item, localItem = {}) {
     birthdate: item.birthdate,
     position: item.position,
     laterality: item.laterality || "Diestro",
-    photo: item.photo || "",
-    photoPath: item.photo_path || "",
+    photo: item.photo || localItem.photo || "",
+    photoPath: item.photo_path || localItem.photoPath || "",
     description: remoteProfile.description || localItem.description || "",
     career: remoteProfile.career || localItem.career || "",
     ratings: normalizePlayerRatings(remoteProfile.ratings || localItem.ratings),
@@ -648,6 +673,7 @@ function applyRemoteAppState(remoteAppState, preferLocal) {
   if (Array.isArray(remoteAppState.teams) && remoteAppState.teams.length) {
     const remoteTeams = remoteAppState.teams
       .filter((item) => item?.id && item?.name)
+      .filter((item) => !REMOVED_TEAM_IDS.has(String(item.id)))
       .map((item) => ({ id: String(item.id), name: String(item.name) }));
     const teamsById = new Map(
       (preferLocal ? [...remoteTeams, ...state.teams] : [...state.teams, ...remoteTeams]).map((item) => [
@@ -795,6 +821,25 @@ function teamName(teamId = state.activeTeamId) {
   return state.teams.find((item) => item.id === teamId)?.name || TEAM_NAME;
 }
 
+function playerTeamName(item) {
+  if (item?.teamName && item.teamName !== TEAM_NAME) return item.teamName;
+
+  const linkedTeam = state.teams.find((team) => team.id === item?.teamId);
+  if (linkedTeam && linkedTeam.id !== DEFAULT_TEAM_ID) return linkedTeam.name;
+
+  const matchingPlayer = state.players.find(
+    (candidate) =>
+      candidate.id !== item?.id &&
+      candidate.name === item?.name &&
+      candidate.birthdate === item?.birthdate &&
+      (candidate.teamName || (candidate.teamId && candidate.teamId !== DEFAULT_TEAM_ID))
+  );
+  if (matchingPlayer?.teamName) return matchingPlayer.teamName;
+
+  const matchingTeam = state.teams.find((team) => team.id === matchingPlayer?.teamId);
+  return matchingTeam?.name || currentTeam()?.name || linkedTeam?.name || TEAM_NAME;
+}
+
 function activePlayers() {
   return state.players.filter((item) => (item.teamId || DEFAULT_TEAM_ID) === state.activeTeamId);
 }
@@ -870,7 +915,6 @@ async function deleteTeam(teamId) {
 
   await Promise.allSettled([
     ...players.map((playerItem) => supabaseDelete("players", "id", playerItem.id)),
-    ...players.map((playerItem) => supabaseDeletePlayerPhoto(playerItem.photoPath)),
     ...matches.map((matchItem) => supabaseDelete("matches", "id", matchItem.id))
   ]);
 }
@@ -879,6 +923,7 @@ function syncTeamsFromData() {
   const known = new Map(state.teams.map((item) => [item.id, item]));
   [...state.players, ...state.matches].forEach((item) => {
     const id = item.teamId || DEFAULT_TEAM_ID;
+    if (REMOVED_TEAM_IDS.has(id)) return;
     if (!known.has(id)) {
       const team = { id, name: item.teamName || (id === DEFAULT_TEAM_ID ? TEAM_NAME : id) };
       state.teams.push(team);
@@ -1537,16 +1582,15 @@ function renderMatchDetail() {
 }
 
 function renderStandings() {
-  const table = buildStandings();
-  const playedMatches = parsedMatches().length;
+  const table = FINAL_STANDINGS;
 
   views.standings.innerHTML = `
     <div class="section-intro">
       <div>
-        <h2>Clasificación</h2>
-        <p class="meta">Calculada con los resultados registrados en Partidos.</p>
+        <h2>Clasificación final · Cadete Preferente</h2>
+        <p class="meta">Clasificación definitiva de la categoría Cadete Preferente.</p>
       </div>
-      <span class="tag">${playedMatches} ${playedMatches === 1 ? "partido computado" : "partidos computados"}</span>
+      <span class="tag">14 jornadas</span>
     </div>
     ${
       table.length
@@ -1561,9 +1605,6 @@ function renderStandings() {
                     <th>G</th>
                     <th>E</th>
                     <th>P</th>
-                    <th>GF</th>
-                    <th>GC</th>
-                    <th>DG</th>
                     <th>Pts</th>
                   </tr>
                 </thead>
@@ -1578,9 +1619,6 @@ function renderStandings() {
                           <td>${team.won}</td>
                           <td>${team.drawn}</td>
                           <td>${team.lost}</td>
-                          <td>${team.goalsFor}</td>
-                          <td>${team.goalsAgainst}</td>
-                          <td>${formatGoalDifference(team.goalDifference)}</td>
                           <td><strong>${team.points}</strong></td>
                         </tr>
                       `
@@ -1590,7 +1628,7 @@ function renderStandings() {
               </table>
             </div>
           </div>`
-        : `<div class="empty-state">Añade resultados con formato 2-1 en Partidos para generar la clasificación.</div>`
+        : `<div class="empty-state">No hay datos disponibles para la clasificación.</div>`
     }
   `;
 }
@@ -2246,7 +2284,6 @@ function deletePlayer(id) {
     }
   });
   saveState();
-  supabaseDeletePlayerPhoto(item.photoPath);
   supabaseDelete("players", "id", id);
   render();
 }
@@ -2547,6 +2584,7 @@ async function downloadPlayerPdf(item) {
   }
   popup.document.write("<p style=\"font:16px Arial;padding:24px\">Preparando la ficha y cargando la fotografía...</p>");
 
+  const printableTeamName = playerTeamName(item);
   const appearances = activeMatches().filter((matchItem) => matchItem.lineup?.[item.id]);
   const totals = playerReportTotals(item);
   const reports = activeMatches()
@@ -2599,7 +2637,7 @@ async function downloadPlayerPdf(item) {
         <header>
           <div class="photo">${printablePhoto ? `<img src="${escapeAttr(printablePhoto)}" alt="Foto de ${escapeAttr(item.name)}" />` : initials(item.name)}</div>
           <div>
-            <div class="meta">ATHLETIC CLUB · FICHA TÉCNICA</div>
+            <div class="meta">${escapeHtml(printableTeamName.toUpperCase())} · FICHA TÉCNICA</div>
             <h1>${escapeHtml(item.name)}</h1>
             <div class="info">
               ${renderPdfInfo("Fecha de nacimiento", formatDate(item.birthdate))}
@@ -2636,7 +2674,7 @@ async function downloadPlayerPdf(item) {
           ${renderPdfMetric("Tarjetas rojas", totals.redCards)}
         </div>
         <h2>Trayectoria</h2>
-        <div class="description">${escapeHtml(item.career || `${currentTeam().name} · Temporada 2026`)}</div>
+        <div class="description">${escapeHtml(item.career || `${printableTeamName} · Temporada 2026`)}</div>
         <h2>Informes de partido</h2>
         ${
           reports.length
