@@ -5,10 +5,20 @@ const SUPABASE_ANON_KEY =
 const PLAYER_PHOTOS_BUCKET = "player-photos";
 const TEAM_NAME = "Athletic Club";
 const DEFAULT_TEAM_ID = "athletic-club";
+const DEFAULT_TEAMS_VERSION = 2;
 const DEFAULT_VISIBLE_TEAM = {
   id: "ce-ferreries-cadete-preferente",
   name: "CE Ferreries Cadete Preferente"
 };
+const DEFAULT_VISIBLE_TEAMS = [
+  DEFAULT_VISIBLE_TEAM,
+  { id: "ce-ferreries-infantil-preferente", name: "CE Ferreries Infantil Preferente" },
+  { id: "ce-ferreries-alevin-a", name: "CE Ferreries Alevín A" },
+  { id: "ce-ferreries-alevin-b", name: "CE Ferreries Alevín B" },
+  { id: "ce-ferreries-benjamin-a", name: "CE Ferreries Benjamín A" },
+  { id: "ce-ferreries-benjamin-b", name: "CE Ferreries Benjamín B" },
+  { id: "ce-ferreries-prebenjamin", name: "CE Ferreries Prebenjamín" }
+];
 const DEFAULT_FORMATION = "1442";
 const FORMATION_STORAGE_KEY = "__formation";
 const APP_STATE_MATCH_ID = "__app_state__";
@@ -53,7 +63,8 @@ const FORMATIONS = {
 
 const initialState = {
   lastModifiedAt: 0,
-  teams: [DEFAULT_VISIBLE_TEAM],
+  defaultTeamsVersion: DEFAULT_TEAMS_VERSION,
+  teams: structuredClone(DEFAULT_VISIBLE_TEAMS),
   activeTeamId: DEFAULT_VISIBLE_TEAM.id,
   players: [
     player("p1", "Unai Simón", 1, "1997-06-11", "Portero", "Diestro"),
@@ -314,20 +325,34 @@ function normalizePlan(value) {
   return plan;
 }
 
+function mergeDefaultVisibleTeams(teams, currentVersion = 0) {
+  const visibleTeams = (teams?.length ? teams : structuredClone(DEFAULT_VISIBLE_TEAMS)).filter(
+    (item) => !REMOVED_TEAM_IDS.has(item.id)
+  );
+  if (Number(currentVersion) >= DEFAULT_TEAMS_VERSION) return visibleTeams;
+
+  const knownIds = new Set(visibleTeams.map((item) => item.id));
+  DEFAULT_VISIBLE_TEAMS.forEach((item) => {
+    if (!knownIds.has(item.id) && !REMOVED_TEAM_IDS.has(item.id)) {
+      visibleTeams.push(structuredClone(item));
+      knownIds.add(item.id);
+    }
+  });
+  return visibleTeams;
+}
+
 function loadState() {
   try {
     const saved = JSON.parse(localStorage.getItem(STORAGE_KEY));
     if (!saved) return structuredClone(initialState);
     const activeView = ["lineups", "gameplan"].includes(saved.activeView) ? "matches" : saved.activeView;
-    const visibleTeams = (saved.teams?.length ? saved.teams : structuredClone(initialState.teams)).filter(
-      (item) => !REMOVED_TEAM_IDS.has(item.id)
-    );
-    const teams = visibleTeams.length ? visibleTeams : structuredClone(initialState.teams);
+    const teams = mergeDefaultVisibleTeams(saved.teams, saved.defaultTeamsVersion);
     const activeTeamId = teams.some((item) => item.id === saved.activeTeamId) ? saved.activeTeamId : teams[0].id;
     return {
       ...structuredClone(initialState),
       ...saved,
       lastModifiedAt: Number(saved.lastModifiedAt) || 1,
+      defaultTeamsVersion: DEFAULT_TEAMS_VERSION,
       activeView,
       teams,
       activeTeamId,
@@ -653,6 +678,7 @@ function toRemoteAppStateLineup() {
       __appState: {
         version: 1,
         updatedAt: Number(state.lastModifiedAt) || Date.now(),
+        defaultTeamsVersion: Number(state.defaultTeamsVersion) || DEFAULT_TEAMS_VERSION,
         teams: state.teams,
         activeTeamId: state.activeTeamId,
         playerProfiles: Object.fromEntries(
@@ -681,7 +707,12 @@ function applyRemoteAppState(remoteAppState, preferLocal) {
         item
       ])
     );
-    state.teams = [...teamsById.values()];
+    const defaultTeamsVersion = Math.max(
+      Number(state.defaultTeamsVersion) || 0,
+      Number(remoteAppState.defaultTeamsVersion) || 0
+    );
+    state.teams = mergeDefaultVisibleTeams([...teamsById.values()], defaultTeamsVersion);
+    state.defaultTeamsVersion = DEFAULT_TEAMS_VERSION;
   }
   if (!preferLocal && state.teams.some((item) => item.id === remoteAppState.activeTeamId)) {
     state.activeTeamId = remoteAppState.activeTeamId;
