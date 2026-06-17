@@ -1,4 +1,5 @@
 const STORAGE_KEY = "athletic-club-technical-app-v1";
+const STORAGE_BACKUP_KEY = `${STORAGE_KEY}-backup`;
 const SUPABASE_URL = "https://vhmnyjmhnobqmxgulsag.supabase.co";
 const SUPABASE_ANON_KEY =
   "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZobW55am1obm9icW14Z3Vsc2FnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA2NzEyNTMsImV4cCI6MjA5NjI0NzI1M30.Li4R65j3sGHSrIdt7tiubHNDgKrzjXDqcT92BCqZfDA";
@@ -209,6 +210,7 @@ matchForm.addEventListener("submit", (event) => {
   const existing = state.matches.find((item) => item.id === id);
   const formMatch = {
     id,
+    updatedAt: Date.now(),
     teamId: state.activeTeamId,
     round: Number(document.querySelector("#match-round").value),
     date: document.querySelector("#match-date").value,
@@ -273,6 +275,7 @@ function player(id, name, number, birthdate, position, laterality = "Diestro", t
 function match(id, round, home, away, date, status, score, teamId = DEFAULT_TEAM_ID) {
   return {
     id,
+    updatedAt: 0,
     teamId,
     round,
     home,
@@ -371,6 +374,7 @@ function loadState() {
           ?.filter((item) => !REMOVED_MATCH_IDS.has(item.id))
           .map((item) => ({
             ...item,
+            updatedAt: Number(item.updatedAt) || 0,
             teamId: item.teamId || DEFAULT_TEAM_ID,
             teamStats: normalizeTeamMatchStats(item.teamStats),
             notes: item.notes || "",
@@ -389,6 +393,30 @@ function saveState() {
   state.lastModifiedAt = Date.now();
   localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
   queueRemoteSave();
+}
+
+function backupLocalState(reason) {
+  try {
+    localStorage.setItem(
+      STORAGE_BACKUP_KEY,
+      JSON.stringify({
+        reason,
+        createdAt: Date.now(),
+        state
+      })
+    );
+  } catch (error) {
+    console.error(error);
+  }
+}
+
+function markMatchUpdated(item) {
+  item.updatedAt = Date.now();
+}
+
+function saveMatchState(item) {
+  markMatchUpdated(item);
+  saveState();
 }
 
 function getSupabaseAnonKey() {
@@ -416,6 +444,7 @@ async function pullRemoteState() {
   if (!hasSupabaseConfig()) return;
   try {
     isPullingRemote = true;
+    backupLocalState("before-remote-pull");
     const results = await Promise.allSettled([
       supabaseRequest("players?select=*&order=number.asc"),
       supabaseRequest("matches?select=*&order=round.asc"),
@@ -463,7 +492,8 @@ async function pullRemoteState() {
       state.matches = [
         ...visibleMatches.map((item) => {
           const remoteMatch = fromRemoteMatch(item, lineupByMatch[item.id], planByMatch[item.id]);
-          return preferLocal && localMatches.has(item.id) ? localMatches.get(item.id) : remoteMatch;
+          const localMatch = localMatches.get(item.id);
+          return shouldKeepLocalMatch(localMatch, remoteMatch, preferLocal) ? localMatch : remoteMatch;
         }),
         ...state.matches.filter(
           (item) => !remoteMatchIds.has(item.id) && !REMOVED_MATCH_IDS.has(item.id)
@@ -491,6 +521,14 @@ function settledValue(result, fallback) {
   if (result.status === "fulfilled") return result.value || fallback;
   console.error(result.reason);
   return fallback;
+}
+
+function shouldKeepLocalMatch(localMatch, remoteMatch, preferLocal) {
+  if (!localMatch) return false;
+  if (preferLocal) return true;
+  const localUpdatedAt = Number(localMatch.updatedAt) || 0;
+  const remoteUpdatedAt = Number(remoteMatch.updatedAt) || 0;
+  return Boolean(localUpdatedAt && remoteUpdatedAt && localUpdatedAt > remoteUpdatedAt);
 }
 
 async function pushRemoteState(throwOnError = false) {
@@ -754,6 +792,11 @@ function toRemoteMatch(item) {
 function fromRemoteMatch(item, lineupData, plan) {
   return {
     id: item.id,
+    updatedAt: Math.max(
+      Date.parse(item.updated_at) || 0,
+      Number(lineupData?.updatedAt) || 0,
+      Date.parse(plan?.updated_at) || 0
+    ),
     teamId: lineupData?.teamId || DEFAULT_TEAM_ID,
     teamName: lineupData?.teamName || "",
     round: item.round,
@@ -785,7 +828,8 @@ function toRemoteLineup(item) {
       __teamName: teamName(item.teamId),
       __teamStats: normalizeTeamMatchStats(item.teamStats),
       __matchNotes: item.notes || "",
-      __lineupSheets: normalizeLineupSheets(item.lineupSheets, item)
+      __lineupSheets: normalizeLineupSheets(item.lineupSheets, item),
+      __updatedAt: Number(item.updatedAt) || Date.now()
     },
     updated_at: new Date().toISOString()
   };
@@ -799,13 +843,15 @@ function parseRemoteLineup(value) {
   const teamStats = normalizeTeamMatchStats(lineup.__teamStats);
   const notes = lineup.__matchNotes || "";
   const lineupSheets = lineup.__lineupSheets || null;
+  const updatedAt = Number(lineup.__updatedAt) || 0;
   delete lineup[FORMATION_STORAGE_KEY];
   delete lineup.__teamId;
   delete lineup.__teamName;
   delete lineup.__teamStats;
   delete lineup.__matchNotes;
   delete lineup.__lineupSheets;
-  return { lineup, formation, teamId, teamName: remoteTeamName, teamStats, notes, lineupSheets };
+  delete lineup.__updatedAt;
+  return { lineup, formation, teamId, teamName: remoteTeamName, teamStats, notes, lineupSheets, updatedAt };
 }
 
 function toRemotePlan(item) {
@@ -1917,7 +1963,7 @@ function renderLineupEditor(item, body) {
         });
       }
       syncLegacyLineup(item);
-      saveState();
+      saveMatchState(item);
       render();
     });
   });
@@ -1928,7 +1974,7 @@ function renderLineupEditor(item, body) {
       if (input.tagName === "SELECT") row.playerId = input.value;
       else row.name = input.value.trim();
       syncLegacyLineup(item);
-      saveState();
+      saveMatchState(item);
     });
   });
 
@@ -1943,7 +1989,7 @@ function renderLineupEditor(item, body) {
       }
       rows[rowIndex].role = select.value;
       syncLegacyLineup(item);
-      saveState();
+      saveMatchState(item);
       render();
     });
   });
@@ -1952,7 +1998,7 @@ function renderLineupEditor(item, body) {
     input.addEventListener("change", () => {
       const row = item.lineupSheets[input.dataset.lineupSide][Number(input.dataset.lineupMinute)];
       row.changeMinute = input.value === "" ? "" : clamp(nonNegativeInteger(input.value), 0, 130);
-      saveState();
+      saveMatchState(item);
     });
   });
 
@@ -1960,7 +2006,7 @@ function renderLineupEditor(item, body) {
     button.addEventListener("click", () => {
       item.lineupSheets[button.dataset.lineupSide].splice(Number(button.dataset.removeLineupRow), 1);
       syncLegacyLineup(item);
-      saveState();
+      saveMatchState(item);
       render();
     });
   });
@@ -2046,7 +2092,7 @@ function renderMatchInformation(item, body) {
   `;
   body.querySelector("#match-notes").addEventListener("input", (event) => {
     item.notes = event.target.value;
-    saveState();
+    saveMatchState(item);
   });
 }
 
@@ -2099,7 +2145,7 @@ function renderLineup(item, body) {
 
   body.querySelector("#formation-selector").addEventListener("change", (event) => {
     applyFormation(item, event.target.value);
-    saveState();
+    saveMatchState(item);
     render();
   });
 
@@ -2115,7 +2161,7 @@ function renderLineup(item, body) {
     const y = 100 - displayX;
     item.lineup[draggedPlayerId] = { x, y };
     draggedPlayerId = null;
-    saveState();
+    saveMatchState(item);
     render();
   });
 
@@ -2128,7 +2174,7 @@ function renderLineup(item, body) {
   body.querySelectorAll("[data-remove-lineup]").forEach((button) => {
     button.addEventListener("click", () => {
       delete item.lineup[button.dataset.removeLineup];
-      saveState();
+      saveMatchState(item);
       render();
     });
   });
@@ -2136,7 +2182,7 @@ function renderLineup(item, body) {
   body.querySelectorAll("[data-place-player]").forEach((button) => {
     button.addEventListener("click", () => {
       item.lineup[button.dataset.placePlayer] = nextLineupSlot(item);
-      saveState();
+      saveMatchState(item);
       render();
     });
   });
