@@ -1706,6 +1706,9 @@ function renderPlayerStatistics(item, body) {
     );
   }).length;
   const totals = playerReportTotals(item);
+  const officialMatches = playedAppearances.length;
+  const totalPasses = totals.completedPasses + totals.failedPasses;
+  const passAccuracy = totalPasses ? (totals.completedPasses / totalPasses) * 100 : 0;
   const latestAppearance = appearances
     .slice()
     .sort((a, b) => b.round - a.round)[0];
@@ -1726,13 +1729,22 @@ function renderPlayerStatistics(item, body) {
         ${renderFeaturedPlayerStat(playedAppearances.length, totals.minutes, starts)}
         ${renderPlayerStatCard("Goles marcados", totals.goals, "GO")}
         ${renderPlayerStatCard("Asistencias de gol", totals.assists, "AS")}
-        ${renderPlayerStatCard("Tiros a puerta", totals.shotsOnTarget, "TP")}
+        ${renderPlayerStatCard("Contribuciones de gol", totals.goals + totals.assists, "CG", [
+          `${totals.goals} goles + ${totals.assists} asistencias`
+        ])}
+        ${renderPlayerStatCard("Tiros a puerta", totals.shotsOnTarget, "TP", [
+          `${formatPerMatch(totals.shotsOnTarget, officialMatches)} por partido`
+        ])}
         ${renderPlayerStatCard("Pases", totals.completedPasses + totals.failedPasses, "PA", [
           `${totals.completedPasses} correctos`,
-          `${totals.failedPasses} fallados`
+          `${totals.failedPasses} fallados`,
+          `${formatPercentage(passAccuracy)} de acierto`
         ])}
-        ${renderPlayerStatCard("Pases de gol", totals.goalPasses, "PG")}
+        ${renderPlayerStatCard("Pases de gol", totals.goalPasses, "PG", [
+          `${formatPerMatch(totals.goalPasses, officialMatches)} por partido`
+        ])}
         ${renderPlayerStatCard("Recuperaciones", totals.recoveries, "RE", [
+          `${formatPerMatch(totals.recoveries, officialMatches)} por partido`,
           `${totals.losses} pérdidas`
         ])}
         ${renderPlayerStatCard("Tarjetas", totals.yellowCards + totals.redCards, "TA", [
@@ -1762,15 +1774,22 @@ function renderFeaturedPlayerStat(matches, minutes, starts) {
   return `
     <article class="player-stat-card featured">
       <div class="player-stat-card-title"><span>PO</span> Partidos oficiales</div>
-      <div class="featured-stat-content">
-        <strong>${matches}</strong>
-        <div>
-          <span>${minutes.toLocaleString("es-ES")} min. jugados</span>
-          <span>${starts} titularidades</span>
-        </div>
+      <strong>${matches}</strong>
+      <div class="player-stat-card-details">
+        <span>${minutes.toLocaleString("es-ES")} min. jugados</span>
+        <span>${starts} titularidades</span>
       </div>
     </article>
   `;
+}
+
+function formatPerMatch(total, matches) {
+  if (!matches) return "0";
+  return new Intl.NumberFormat("es-ES", { maximumFractionDigits: 2 }).format(total / matches);
+}
+
+function formatPercentage(value) {
+  return `${new Intl.NumberFormat("es-ES", { maximumFractionDigits: 1 }).format(value)}%`;
 }
 
 function renderPlayerStatCard(title, value, icon, details = []) {

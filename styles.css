@@ -733,10 +733,13 @@ button {
 }
 
 .player-stat-card.featured {
-  grid-column: span 2;
   color: #fff;
   background: linear-gradient(135deg, #d90822, #ed0a2d);
   border-color: #d90822;
+}
+
+.player-stat-card.featured .player-stat-card-details {
+  color: rgb(255 255 255 / 88%);
 }
 
 .player-stat-card-title {
@@ -2361,10 +2364,6 @@ button:focus-visible {
 
   .player-stat-cards {
     grid-template-columns: 1fr 1fr;
-  }
-
-  .player-stat-card.featured {
-    grid-column: span 2;
   }
 
   .player-stat-card {
