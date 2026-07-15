@@ -411,6 +411,49 @@ button {
   grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
 }
 
+.squad-position-groups {
+  display: grid;
+  gap: 24px;
+}
+
+.squad-position-group {
+  display: grid;
+  gap: 12px;
+}
+
+.squad-position-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding-bottom: 9px;
+  border-bottom: 2px solid var(--red);
+}
+
+.squad-position-heading h2 {
+  margin: 0;
+  font-size: 1.15rem;
+}
+
+.squad-position-heading span {
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 800;
+}
+
+.squad-position-group.pending .squad-position-heading {
+  border-bottom-color: #aab1bb;
+}
+
+.position-empty-state {
+  padding: 12px 14px;
+  border: 1px dashed var(--line);
+  border-radius: 8px;
+  color: var(--muted);
+  background: rgb(255 255 255 / 55%);
+  font-size: 0.86rem;
+}
+
 .player-card {
   padding: 14px;
   display: grid;

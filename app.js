@@ -1461,6 +1461,16 @@ function pageTitleForView(view) {
 function renderSquad() {
   const players = activePlayers();
   const staff = activeStaff();
+  const positionGroups = [
+    ["Portero", "Porteros"],
+    ["Defensa", "Defensas"],
+    ["Centrocampista", "Centrocampistas"],
+    ["Delantero", "Delanteros"]
+  ];
+  const groupedPlayerIds = new Set(
+    players.filter((item) => positionGroups.some(([position]) => item.position === position)).map((item) => item.id)
+  );
+  const pendingPlayers = players.filter((item) => !groupedPlayerIds.has(item.id));
   views.squad.innerHTML = `
     <div class="team-switcher panel">
       <div class="team-switcher-summary">
@@ -1472,12 +1482,11 @@ function renderSquad() {
         <button class="primary-button" id="add-team-button" type="button">Añadir equipo</button>
       </div>
     </div>
-    <div class="squad-grid">
-      ${players
-        .slice()
-        .sort((a, b) => a.number - b.number)
-        .map(renderPlayerCard)
+    <div class="squad-position-groups">
+      ${positionGroups
+        .map(([position, title]) => renderSquadPositionGroup(title, players.filter((item) => item.position === position)))
         .join("")}
+      ${pendingPlayers.length ? renderSquadPositionGroup("Posición pendiente", pendingPlayers, true) : ""}
     </div>
     ${players.length ? "" : `<div class="empty-state">Este equipo aún no tiene jugadores. Usa “Añadir jugador” para crear su plantilla.</div>`}
     <section class="staff-section panel">
@@ -1511,6 +1520,26 @@ function renderSquad() {
       setView("playerDetail");
     });
   });
+}
+
+function renderSquadPositionGroup(title, players, pending = false) {
+  return `
+    <section class="squad-position-group ${pending ? "pending" : ""}">
+      <div class="squad-position-heading">
+        <h2>${escapeHtml(title)}</h2>
+        <span>${players.length} ${players.length === 1 ? "jugador" : "jugadores"}</span>
+      </div>
+      ${
+        players.length
+          ? `<div class="squad-grid">${players
+              .slice()
+              .sort((a, b) => (a.number || 999) - (b.number || 999) || a.name.localeCompare(b.name, "es"))
+              .map(renderPlayerCard)
+              .join("")}</div>`
+          : `<div class="position-empty-state">Sin jugadores</div>`
+      }
+    </section>
+  `;
 }
 
 function activeStaff() {
