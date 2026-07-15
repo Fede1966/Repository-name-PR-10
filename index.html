@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>CE Ferreries | Gestión técnica</title>
-    <link rel="stylesheet" href="styles.css?v=20260614-1" />
+    <link rel="stylesheet" href="styles.css?v=20260714-5" />
   </head>
   <body>
     <div class="app-shell">
@@ -16,8 +16,18 @@
             <span>Área técnica</span>
           </div>
         </div>
+        <div class="season-navigation" aria-label="Temporadas">
+          <span class="season-navigation-label">Temporada</span>
+          <div class="season-tabs" role="tablist">
+            <button class="season-tab active" data-season="2025-2026" type="button" role="tab">2025-2026</button>
+            <button class="season-tab" data-season="2026-2027" type="button" role="tab">2026-2027</button>
+          </div>
+        </div>
         <nav class="nav-tabs" aria-label="Navegación principal">
           <button class="nav-button active" data-view="squad">Equipos</button>
+          <label class="header-team-selector" id="toolbar-team-selector-wrap">
+            <select id="toolbar-team-selector" aria-label="Seleccionar equipo"></select>
+          </label>
           <button class="nav-button" data-view="matches">Partidos</button>
           <button class="nav-button" data-view="standings">Clasificación</button>
           <button class="nav-button" data-view="statistics">Estadísticas</button>
@@ -27,10 +37,11 @@
       <main class="main-content">
         <section class="toolbar">
           <div>
-            <p class="eyebrow">Temporada 2026</p>
+            <p class="eyebrow" id="season-label">Temporada 2025-2026</p>
             <h1 id="page-title">Equipos</h1>
           </div>
           <div class="toolbar-actions">
+            <button class="secondary-button" id="add-match-video-button" type="button">Añadir vídeo</button>
             <button class="primary-button" id="context-action-button" type="button">Añadir jugador</button>
           </div>
         </section>
@@ -64,7 +75,7 @@
     </dialog>
 
     <dialog id="player-dialog" class="modal">
-      <form method="dialog" id="player-form" class="modal-card">
+      <form method="dialog" id="player-form" class="modal-card person-modal-card">
         <div class="modal-header">
           <h2 id="player-modal-title">Nuevo jugador</h2>
           <button class="icon-button" value="cancel" type="submit" aria-label="Cerrar">×</button>
@@ -87,6 +98,7 @@
         <label>
           Posición
           <select id="player-position" required>
+            <option>Por definir</option>
             <option>Portero</option>
             <option>Defensa</option>
             <option>Centrocampista</option>
@@ -96,6 +108,7 @@
         <label>
           Lateralidad
           <select id="player-laterality" required>
+            <option>Por definir</option>
             <option>Diestro</option>
             <option>Zurdo</option>
             <option>Ambos</option>
@@ -107,6 +120,7 @@
           <input id="player-photo-file" type="file" accept="image/*" />
         </label>
         <div class="photo-preview" id="player-photo-preview"></div>
+        <div class="form-save-status" id="player-form-save-status" aria-live="polite"></div>
         <div class="modal-actions">
           <button class="danger-button" id="delete-player-modal-button" type="button">Eliminar jugador</button>
           <button class="secondary-button" value="cancel" type="submit">Cancelar</button>
@@ -194,6 +208,66 @@
       </form>
     </dialog>
 
-    <script src="app.js?v=20260615-6"></script>
+    <dialog id="staff-dialog" class="modal">
+      <form method="dialog" id="staff-form" class="modal-card person-modal-card">
+        <div class="modal-header">
+          <h2 id="staff-modal-title">Añadir miembro del staff</h2>
+          <button class="icon-button" value="cancel" type="submit" aria-label="Cerrar">×</button>
+        </div>
+        <input type="hidden" id="staff-id" />
+        <label>
+          Nombre y apellidos
+          <input id="staff-name" required maxlength="80" />
+        </label>
+        <label>
+          Cargo
+          <select id="staff-role" required>
+            <option>Primer entrenador</option>
+            <option>Segundo entrenador</option>
+            <option>Delegado</option>
+            <option>Preparador físico</option>
+            <option>Entrenador de porteros</option>
+            <option>Fisioterapeuta</option>
+            <option>Analista</option>
+            <option>Utillero</option>
+            <option>Otro</option>
+          </select>
+        </label>
+        <label>
+          Foto opcional
+          <input id="staff-photo" type="hidden" />
+          <input id="staff-photo-file" type="file" accept="image/*" />
+        </label>
+        <div class="photo-preview" id="staff-photo-preview"></div>
+        <div class="modal-actions">
+          <button class="danger-button" id="delete-staff-button" type="button">Eliminar</button>
+          <button class="secondary-button" value="cancel" type="submit">Cancelar</button>
+          <button class="primary-button" value="default" type="submit">Guardar</button>
+        </div>
+      </form>
+    </dialog>
+
+    <dialog id="match-video-dialog" class="modal">
+      <form method="dialog" id="match-video-form" class="modal-card">
+        <div class="modal-header">
+          <h2>Añadir vídeo</h2>
+          <button class="icon-button" value="cancel" type="submit" aria-label="Cerrar">×</button>
+        </div>
+        <label>
+          Título del vídeo
+          <input id="match-video-title" required maxlength="100" placeholder="Ejemplo: Resumen del partido" />
+        </label>
+        <label>
+          Enlace del vídeo
+          <input id="match-video-link" required type="url" placeholder="https://www.youtube.com/watch?v=..." />
+        </label>
+        <div class="modal-actions">
+          <button class="secondary-button" value="cancel" type="submit">Cancelar</button>
+          <button class="primary-button" value="default" type="submit">Guardar vídeo</button>
+        </div>
+      </form>
+    </dialog>
+
+    <script src="app.js?v=20260715-5"></script>
   </body>
 </html>

@@ -1,5 +1,16 @@
 const STORAGE_KEY = "athletic-club-technical-app-v1";
 const STORAGE_BACKUP_KEY = `${STORAGE_KEY}-backup`;
+const ACTIVE_SEASON_KEY = "ce-ferreries-active-season";
+const LEGACY_SEASON = "2025-2026";
+const NEW_SEASON = "2026-2027";
+const SEASON_STORAGE_KEYS = {
+  [LEGACY_SEASON]: STORAGE_KEY,
+  [NEW_SEASON]: "ce-ferreries-technical-app-2026-2027"
+};
+const SEASON_BACKUP_KEYS = {
+  [LEGACY_SEASON]: `${STORAGE_KEY}-automatic-backup`,
+  [NEW_SEASON]: "ce-ferreries-technical-app-2026-2027-automatic-backup"
+};
 const SUPABASE_URL = "https://vhmnyjmhnobqmxgulsag.supabase.co";
 const SUPABASE_ANON_KEY =
   "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZobW55am1obm9icW14Z3Vsc2FnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA2NzEyNTMsImV4cCI6MjA5NjI0NzI1M30.Li4R65j3sGHSrIdt7tiubHNDgKrzjXDqcT92BCqZfDA";
@@ -23,6 +34,7 @@ const DEFAULT_VISIBLE_TEAMS = [
 const DEFAULT_FORMATION = "1442";
 const FORMATION_STORAGE_KEY = "__formation";
 const APP_STATE_MATCH_ID = "__app_state__";
+const NEW_SEASON_APP_STATE_MATCH_ID = "__app_state_2026_2027__";
 const REMOVED_TEAM_IDS = new Set(["athletic-club", "ce-ferreries-cadete-a"]);
 const REMOVED_MATCH_IDS = new Set(["b7023b94-d831-4795-aab4-c861b3a7a7cd"]);
 const FINAL_STANDINGS = [
@@ -67,6 +79,8 @@ const initialState = {
   defaultTeamsVersion: DEFAULT_TEAMS_VERSION,
   teams: structuredClone(DEFAULT_VISIBLE_TEAMS),
   activeTeamId: DEFAULT_VISIBLE_TEAM.id,
+  staff: [],
+  matchVideos: [],
   players: [
     player("p1", "Unai Simón", 1, "1997-06-11", "Portero", "Diestro"),
     player("p2", "Aitor Paredes", 4, "2000-04-29", "Defensa", "Diestro"),
@@ -95,7 +109,11 @@ const initialState = {
   activePlayerTab: "statistics"
 };
 
+const requestedSeason = new URLSearchParams(window.location.search).get("temporada");
+let activeSeason = requestedSeason === NEW_SEASON ? NEW_SEASON : LEGACY_SEASON;
 let state = loadState();
+repairMissingTeams();
+recoverKnown2026SeasonData();
 let draggedPlayerId = null;
 let remoteSaveTimer = null;
 let isPullingRemote = false;
@@ -112,7 +130,10 @@ const views = {
 };
 
 const pageTitle = document.querySelector("#page-title");
+const seasonLabel = document.querySelector("#season-label");
 const contextActionButton = document.querySelector("#context-action-button");
+const toolbarTeamSelectorWrap = document.querySelector("#toolbar-team-selector-wrap");
+const toolbarTeamSelector = document.querySelector("#toolbar-team-selector");
 const playerDialog = document.querySelector("#player-dialog");
 const playerForm = document.querySelector("#player-form");
 const matchDialog = document.querySelector("#match-dialog");
@@ -123,10 +144,90 @@ const deleteTeamButton = document.querySelector("#delete-team-button");
 const playerPhotoInput = document.querySelector("#player-photo");
 const playerPhotoFileInput = document.querySelector("#player-photo-file");
 const playerPhotoPreview = document.querySelector("#player-photo-preview");
+const playerFormSaveStatus = document.querySelector("#player-form-save-status");
 const deletePlayerModalButton = document.querySelector("#delete-player-modal-button");
+const staffDialog = document.querySelector("#staff-dialog");
+const staffForm = document.querySelector("#staff-form");
+const deleteStaffButton = document.querySelector("#delete-staff-button");
+const staffPhotoInput = document.querySelector("#staff-photo");
+const staffPhotoFileInput = document.querySelector("#staff-photo-file");
+const staffPhotoPreview = document.querySelector("#staff-photo-preview");
+const addMatchVideoButton = document.querySelector("#add-match-video-button");
+const matchVideoDialog = document.querySelector("#match-video-dialog");
+const matchVideoForm = document.querySelector("#match-video-form");
 
 document.querySelectorAll(".nav-button").forEach((button) => {
   button.addEventListener("click", () => setView(button.dataset.view));
+});
+
+document.querySelectorAll(".season-tab").forEach((button) => {
+  button.addEventListener("click", () => switchSeason(button.dataset.season));
+});
+
+toolbarTeamSelector.addEventListener("change", (event) => {
+  state.activeTeamId = event.target.value;
+  state.selectedPlayerId = activePlayers()[0]?.id || "";
+  state.selectedMatchId = activeMatches()[0]?.id || "";
+  saveState();
+  render();
+});
+
+staffPhotoFileInput.addEventListener("change", async () => {
+  const file = staffPhotoFileInput.files[0];
+  if (!file) return updateStaffPhotoPreview(staffPhotoInput.value);
+  updateStaffPhotoPreview(await readFileAsDataUrl(file));
+});
+
+staffForm.addEventListener("submit", async (event) => {
+  if (event.submitter?.value === "cancel") return;
+  event.preventDefault();
+  const id = document.querySelector("#staff-id").value || crypto.randomUUID();
+  const currentMember = state.staff.find((item) => item.id === id);
+  const photoFile = staffPhotoFileInput.files[0];
+  const uploadedPhoto = photoFile ? await savePlayerPhoto(photoFile, `staff-${id}`) : null;
+  const member = {
+    id,
+    teamId: state.activeTeamId,
+    name: document.querySelector("#staff-name").value.trim(),
+    role: document.querySelector("#staff-role").value,
+    photo: uploadedPhoto?.url || staffPhotoInput.value || currentMember?.photo || "",
+    photoPath: uploadedPhoto?.path || currentMember?.photoPath || ""
+  };
+  if (!member.name) return;
+  const index = state.staff.findIndex((item) => item.id === id);
+  if (index >= 0) state.staff[index] = member;
+  else state.staff.push(member);
+  if (!saveState()) return;
+  staffDialog.close();
+  render();
+});
+
+deleteStaffButton.addEventListener("click", () => {
+  const id = document.querySelector("#staff-id").value;
+  if (!id) return;
+  const member = state.staff.find((item) => item.id === id);
+  if (!member || !confirm(`¿Eliminar a ${member.name} del staff?`)) return;
+  state.staff = state.staff.filter((item) => item.id !== id);
+  saveState();
+  staffDialog.close();
+  render();
+});
+
+addMatchVideoButton.addEventListener("click", () => {
+  matchVideoForm.reset();
+  matchVideoDialog.showModal();
+});
+
+matchVideoForm.addEventListener("submit", (event) => {
+  if (event.submitter?.value === "cancel") return;
+  event.preventDefault();
+  const title = document.querySelector("#match-video-title").value.trim();
+  const url = safeExternalUrl(document.querySelector("#match-video-link").value);
+  if (!title || !url) return;
+  state.matchVideos.push({ id: crypto.randomUUID(), teamId: state.activeTeamId, title, url });
+  saveState();
+  matchVideoDialog.close();
+  render();
 });
 
 teamForm.addEventListener("submit", (event) => {
@@ -165,6 +266,32 @@ playerPhotoFileInput.addEventListener("change", async () => {
   updatePhotoPreview(await readFileAsDataUrl(file));
 });
 
+playerForm.addEventListener("input", autosaveExistingPlayerEdits);
+playerForm.addEventListener("change", autosaveExistingPlayerEdits);
+
+function autosaveExistingPlayerEdits() {
+  const id = document.querySelector("#player-id").value;
+  if (!id) return;
+  const item = state.players.find((playerItem) => playerItem.id === id);
+  if (!item) return;
+
+  const name = document.querySelector("#player-name").value.trim();
+  const number = Number(document.querySelector("#player-number").value);
+  item.name = name || item.name;
+  if (number >= 1 && number <= 99) item.number = number;
+  item.birthdate = document.querySelector("#player-birthdate").value;
+  item.position = document.querySelector("#player-position").value;
+  item.laterality = document.querySelector("#player-laterality").value;
+
+  if (saveState()) {
+    playerFormSaveStatus.textContent = "Cambios guardados automáticamente";
+    playerFormSaveStatus.classList.add("saved");
+  } else {
+    playerFormSaveStatus.textContent = "No se han podido guardar los cambios";
+    playerFormSaveStatus.classList.remove("saved");
+  }
+}
+
 deletePlayerModalButton.addEventListener("click", () => {
   const id = document.querySelector("#player-id").value;
   if (!id) return;
@@ -198,7 +325,7 @@ playerForm.addEventListener("submit", async (event) => {
   const index = state.players.findIndex((item) => item.id === formPlayer.id);
   if (index >= 0) state.players[index] = formPlayer;
   else state.players.push(formPlayer);
-  saveState();
+  if (!saveState()) return;
   playerDialog.close();
   render();
 });
@@ -227,6 +354,7 @@ matchForm.addEventListener("submit", (event) => {
       chancesAgainst: nonNegativeInteger(document.querySelector("#match-chances-against").value)
     },
     notes: existing?.notes || "",
+    videoUrl: existing?.videoUrl || "",
     lineupSheets: existing?.lineupSheets || null,
     lineup: existing?.lineup || {},
     formation: existing?.formation || DEFAULT_FORMATION,
@@ -344,10 +472,26 @@ function mergeDefaultVisibleTeams(teams, currentVersion = 0) {
   return visibleTeams;
 }
 
+function emptySeasonState() {
+  return {
+    ...structuredClone(initialState),
+    lastModifiedAt: 0,
+    teams: structuredClone(DEFAULT_VISIBLE_TEAMS),
+    activeTeamId: DEFAULT_VISIBLE_TEAM.id,
+    players: [],
+    matches: [],
+    staff: [],
+    matchVideos: [],
+    selectedMatchId: "",
+    selectedPlayerId: "",
+    activeView: "squad"
+  };
+}
+
 function loadState() {
   try {
-    const saved = JSON.parse(localStorage.getItem(STORAGE_KEY));
-    if (!saved) return structuredClone(initialState);
+    const saved = JSON.parse(localStorage.getItem(SEASON_STORAGE_KEYS[activeSeason]));
+    if (!saved) return activeSeason === NEW_SEASON ? emptySeasonState() : structuredClone(initialState);
     const activeView = ["lineups", "gameplan"].includes(saved.activeView) ? "matches" : saved.activeView;
     const teams = mergeDefaultVisibleTeams(saved.teams, saved.defaultTeamsVersion);
     const activeTeamId = teams.some((item) => item.id === saved.activeTeamId) ? saved.activeTeamId : teams[0].id;
@@ -359,6 +503,24 @@ function loadState() {
       activeView,
       teams,
       activeTeamId,
+      staff: Array.isArray(saved.staff)
+        ? saved.staff.filter((item) => item?.id && item?.name).map((item) => ({
+            id: String(item.id),
+            teamId: item.teamId || activeTeamId,
+            name: String(item.name),
+            role: String(item.role || "Otro"),
+            photo: item.photo || "",
+            photoPath: item.photoPath || ""
+          }))
+        : [],
+      matchVideos: Array.isArray(saved.matchVideos)
+        ? saved.matchVideos.filter((item) => item?.id && item?.title && safeExternalUrl(item.url)).map((item) => ({
+            id: String(item.id),
+            teamId: item.teamId || activeTeamId,
+            title: String(item.title),
+            url: safeExternalUrl(item.url)
+          }))
+        : [],
       players: saved.players?.map((item) => ({
         ...item,
         teamId: item.teamId || DEFAULT_TEAM_ID,
@@ -378,6 +540,7 @@ function loadState() {
             teamId: item.teamId || DEFAULT_TEAM_ID,
             teamStats: normalizeTeamMatchStats(item.teamStats),
             notes: item.notes || "",
+            videoUrl: item.videoUrl || "",
             lineupSheets: normalizeLineupSheets(item.lineupSheets, item),
             lineup: item.lineup || {},
             formation: item.formation || DEFAULT_FORMATION,
@@ -391,8 +554,49 @@ function loadState() {
 
 function saveState() {
   state.lastModifiedAt = Date.now();
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+  const storageKey = SEASON_STORAGE_KEYS[activeSeason];
+  try {
+    localStorage.setItem(SEASON_BACKUP_KEYS[activeSeason], JSON.stringify(recoverySnapshot()));
+  } catch (error) {
+    console.warn("No se pudo actualizar la copia de recuperación", error);
+  }
+  const serializedState = JSON.stringify(state);
+  try {
+    localStorage.setItem(storageKey, serializedState);
+  } catch (error) {
+    console.error("No se pudo guardar el estado", error);
+    try {
+      localStorage.removeItem(SEASON_BACKUP_KEYS[activeSeason]);
+      localStorage.setItem(storageKey, serializedState);
+    } catch (retryError) {
+      console.error("El guardado sigue sin espacio", retryError);
+      alert("No se ha podido guardar. El almacenamiento del navegador está lleno. El formulario seguirá abierto para que no parezca guardado cuando no lo está.");
+      return false;
+    }
+  }
   queueRemoteSave();
+  return true;
+}
+
+function recoverySnapshot() {
+  return {
+    createdAt: Date.now(),
+    season: activeSeason,
+    teams: structuredClone(state.teams || []),
+    players: (state.players || []).map((item) => ({ ...item, photo: "", photoPath: "" })),
+    staff: (state.staff || []).map((item) => ({ ...item, photo: "", photoPath: "" })),
+    matches: structuredClone(state.matches || []),
+    matchVideos: structuredClone(state.matchVideos || [])
+  };
+}
+
+function switchSeason(season) {
+  if (!SEASON_STORAGE_KEYS[season] || season === activeSeason) return;
+  clearTimeout(remoteSaveTimer);
+  localStorage.setItem(ACTIVE_SEASON_KEY, season);
+  const destination = new URL(window.location.href);
+  destination.searchParams.set("temporada", season);
+  window.location.assign(destination.href);
 }
 
 function backupLocalState(reason) {
@@ -442,6 +646,8 @@ async function initializeSupabase() {
 
 async function pullRemoteState() {
   if (!hasSupabaseConfig()) return;
+  if (activeSeason === NEW_SEASON) return pullNewSeasonRemoteState();
+  const seasonAtStart = activeSeason;
   try {
     isPullingRemote = true;
     backupLocalState("before-remote-pull");
@@ -455,6 +661,7 @@ async function pullRemoteState() {
     const matches = settledValue(results[1], []);
     const lineups = settledValue(results[2], []);
     const plans = settledValue(results[3], []);
+    if (activeSeason !== seasonAtStart) return;
     const requiredFailure = results.slice(0, 3).find((result) => result.status === "rejected");
     if (requiredFailure) throw requiredFailure.reason;
     supportsRemotePlayerProfiles = players.some((item) => Object.hasOwn(item, "profile_data"));
@@ -508,7 +715,7 @@ async function pullRemoteState() {
     }
     syncTeamsFromData();
     state.selectedMatchId = selectedMatch()?.id || "";
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+    localStorage.setItem(SEASON_STORAGE_KEYS[activeSeason], JSON.stringify(state));
     render();
   } catch (error) {
     console.error(error);
@@ -533,6 +740,7 @@ function shouldKeepLocalMatch(localMatch, remoteMatch, preferLocal) {
 
 async function pushRemoteState(throwOnError = false) {
   if (!hasSupabaseConfig()) return;
+  if (activeSeason === NEW_SEASON) return pushNewSeasonRemoteState(throwOnError);
   try {
     state.matches = state.matches.filter((item) => !REMOVED_MATCH_IDS.has(item.id));
     await supabaseUpsert("players", state.players.map(toRemotePlayer), "id");
@@ -541,6 +749,56 @@ async function pushRemoteState(throwOnError = false) {
     await supabaseUpsert("game_plans", state.matches.map(toRemotePlan), "match_id");
   } catch (error) {
     console.error(error);
+    if (throwOnError) throw error;
+  }
+}
+
+async function pullNewSeasonRemoteState() {
+  try {
+    isPullingRemote = true;
+    const rows = await supabaseRequest(
+      `lineups?match_id=eq.${encodeURIComponent(NEW_SEASON_APP_STATE_MATCH_ID)}&select=*`
+    );
+    const remoteState = rows?.[0]?.lineup?.__seasonState;
+    if (!remoteState) {
+      isPullingRemote = false;
+      await pushNewSeasonRemoteState();
+      return;
+    }
+
+    const remoteModifiedAt = Number(remoteState.lastModifiedAt) || 0;
+    const localModifiedAt = Number(state.lastModifiedAt) || 0;
+    if (remoteModifiedAt > localModifiedAt) {
+      localStorage.setItem(SEASON_STORAGE_KEYS[NEW_SEASON], JSON.stringify(remoteState));
+      state = loadState();
+      repairMissingTeams();
+      render();
+    } else if (localModifiedAt > remoteModifiedAt) {
+      isPullingRemote = false;
+      await pushNewSeasonRemoteState();
+      return;
+    }
+  } catch (error) {
+    console.error("No se pudo sincronizar la temporada 2026-2027", error);
+  } finally {
+    isPullingRemote = false;
+  }
+}
+
+async function pushNewSeasonRemoteState(throwOnError = false) {
+  if (!hasSupabaseConfig()) return;
+  try {
+    await supabaseUpsert(
+      "lineups",
+      [{
+        match_id: NEW_SEASON_APP_STATE_MATCH_ID,
+        lineup: { __seasonState: state },
+        updated_at: new Date().toISOString()
+      }],
+      "match_id"
+    );
+  } catch (error) {
+    console.error("No se pudo guardar la temporada 2026-2027 en remoto", error);
     if (throwOnError) throw error;
   }
 }
@@ -634,8 +892,8 @@ async function savePlayerPhoto(file, playerId) {
     };
   } catch (error) {
     console.error(error);
-    alert("No se pudo subir la foto a Supabase Storage. Revisa que exista el bucket player-photos ejecutando supabase-schema.sql.");
-    return { url: await readFileAsDataUrl(file), path: "" };
+    alert("No se pudo subir la foto. El jugador se guardará sin la nueva imagen para evitar que se pierdan sus datos al actualizar.");
+    return null;
   }
 }
 
@@ -718,6 +976,8 @@ function toRemoteAppStateLineup() {
         updatedAt: Number(state.lastModifiedAt) || Date.now(),
         defaultTeamsVersion: Number(state.defaultTeamsVersion) || DEFAULT_TEAMS_VERSION,
         teams: state.teams,
+        staff: state.staff,
+        matchVideos: state.matchVideos,
         activeTeamId: state.activeTeamId,
         playerProfiles: Object.fromEntries(
           state.players.map((item) => [item.id, playerProfileSnapshot(item)])
@@ -754,6 +1014,12 @@ function applyRemoteAppState(remoteAppState, preferLocal) {
   }
   if (!preferLocal && state.teams.some((item) => item.id === remoteAppState.activeTeamId)) {
     state.activeTeamId = remoteAppState.activeTeamId;
+  }
+  if (!preferLocal && Array.isArray(remoteAppState.staff)) {
+    state.staff = remoteAppState.staff.filter((item) => item?.id && item?.name);
+  }
+  if (!preferLocal && Array.isArray(remoteAppState.matchVideos)) {
+    state.matchVideos = remoteAppState.matchVideos.filter((item) => item?.id && item?.title && safeExternalUrl(item.url));
   }
   const profiles = remoteAppState.playerProfiles || {};
   state.players = state.players.map((item) => {
@@ -807,6 +1073,7 @@ function fromRemoteMatch(item, lineupData, plan) {
     score: item.score || "",
     teamStats: normalizeTeamMatchStats(lineupData?.teamStats),
     notes: lineupData?.notes || "",
+    videoUrl: lineupData?.videoUrl || "",
     lineupSheets: normalizeLineupSheets(lineupData?.lineupSheets, {
       ...item,
       teamId: lineupData?.teamId || DEFAULT_TEAM_ID,
@@ -828,6 +1095,7 @@ function toRemoteLineup(item) {
       __teamName: teamName(item.teamId),
       __teamStats: normalizeTeamMatchStats(item.teamStats),
       __matchNotes: item.notes || "",
+      __matchVideoUrl: item.videoUrl || "",
       __lineupSheets: normalizeLineupSheets(item.lineupSheets, item),
       __updatedAt: Number(item.updatedAt) || Date.now()
     },
@@ -842,6 +1110,7 @@ function parseRemoteLineup(value) {
   const remoteTeamName = lineup.__teamName || "";
   const teamStats = normalizeTeamMatchStats(lineup.__teamStats);
   const notes = lineup.__matchNotes || "";
+  const videoUrl = lineup.__matchVideoUrl || "";
   const lineupSheets = lineup.__lineupSheets || null;
   const updatedAt = Number(lineup.__updatedAt) || 0;
   delete lineup[FORMATION_STORAGE_KEY];
@@ -849,9 +1118,10 @@ function parseRemoteLineup(value) {
   delete lineup.__teamName;
   delete lineup.__teamStats;
   delete lineup.__matchNotes;
+  delete lineup.__matchVideoUrl;
   delete lineup.__lineupSheets;
   delete lineup.__updatedAt;
-  return { lineup, formation, teamId, teamName: remoteTeamName, teamStats, notes, lineupSheets, updatedAt };
+  return { lineup, formation, teamId, teamName: remoteTeamName, teamStats, notes, videoUrl, lineupSheets, updatedAt };
 }
 
 function toRemotePlan(item) {
@@ -977,11 +1247,14 @@ async function deleteTeam(teamId) {
   }
   const players = state.players.filter((playerItem) => playerItem.teamId === teamId);
   const matches = state.matches.filter((matchItem) => matchItem.teamId === teamId);
+  const staff = state.staff.filter((staffItem) => staffItem.teamId === teamId);
   const message = `¿Eliminar ${item.name}? También se eliminarán ${players.length} jugadores y ${matches.length} partidos de este equipo.`;
   if (!confirm(message)) return;
 
   state.players = state.players.filter((playerItem) => playerItem.teamId !== teamId);
   state.matches = state.matches.filter((matchItem) => matchItem.teamId !== teamId);
+  state.staff = state.staff.filter((staffItem) => staffItem.teamId !== teamId);
+  state.matchVideos = state.matchVideos.filter((videoItem) => videoItem.teamId !== teamId);
   state.teams = state.teams.filter((team) => team.id !== teamId);
   state.activeTeamId = state.teams[0].id;
   state.selectedPlayerId = activePlayers()[0]?.id || "";
@@ -990,19 +1263,21 @@ async function deleteTeam(teamId) {
   teamDialog.close();
   render();
 
-  await Promise.allSettled([
-    ...players.map((playerItem) => supabaseDelete("players", "id", playerItem.id)),
-    ...matches.map((matchItem) => supabaseDelete("matches", "id", matchItem.id))
-  ]);
+  if (activeSeason === LEGACY_SEASON) {
+    await Promise.allSettled([
+      ...players.map((playerItem) => supabaseDelete("players", "id", playerItem.id)),
+      ...matches.map((matchItem) => supabaseDelete("matches", "id", matchItem.id))
+    ]);
+  }
 }
 
 function syncTeamsFromData() {
   const known = new Map(state.teams.map((item) => [item.id, item]));
-  [...state.players, ...state.matches].forEach((item) => {
+  [...state.players, ...state.matches, ...(state.staff || []), ...(state.matchVideos || [])].forEach((item) => {
     const id = item.teamId || DEFAULT_TEAM_ID;
     if (REMOVED_TEAM_IDS.has(id)) return;
     if (!known.has(id)) {
-      const team = { id, name: item.teamName || (id === DEFAULT_TEAM_ID ? TEAM_NAME : id) };
+      const team = { id, name: item.teamName || recoveredTeamName(id) };
       state.teams.push(team);
       known.set(id, team);
     }
@@ -1012,7 +1287,119 @@ function syncTeamsFromData() {
   }
 }
 
+function recoveredTeamName(id) {
+  const knownNames = {
+    "juvenil-b": "Juvenil B",
+    "juvenil-nacional": "Juvenil Nacional",
+    "regional-preferente": "Regional Preferente",
+    "ce-ferreries-juvenil-b": "Juvenil B",
+    "ce-ferreries-juvenil-nacional": "Juvenil Nacional",
+    "ce-ferreries-regional-preferente": "Regional Preferente"
+  };
+  if (knownNames[id]) return knownNames[id];
+  if (id === DEFAULT_TEAM_ID) return TEAM_NAME;
+  return String(id)
+    .replace(/^ce-ferreries-/, "")
+    .split("-")
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ");
+}
+
+function repairMissingTeams() {
+  const before = JSON.stringify(state.teams || []);
+  syncTeamsFromData();
+  if (JSON.stringify(state.teams || []) !== before) {
+    localStorage.setItem(SEASON_STORAGE_KEYS[activeSeason], JSON.stringify(state));
+  }
+}
+
+function recoverKnown2026SeasonData() {
+  if (activeSeason !== NEW_SEASON) return;
+  if (Number(state.recovery2026RosterVersion) >= 1) return;
+  let changed = false;
+
+  const recoveredTeams = [
+    { id: "ce-ferreries-juvenil-nacional", name: "CE Ferreries Juvenil Nacional" },
+    { id: "ce-ferreries-juvenil-preferente-b", name: "CE Ferreries Juvenil Preferente B" },
+    { id: "ce-ferreries-regional-preferente", name: "CE Ferreries Regional Preferente" }
+  ];
+  recoveredTeams.forEach((team) => {
+    if (!state.teams.some((item) => item.id === team.id)) {
+      state.teams.push(team);
+      changed = true;
+    }
+  });
+
+  const teamId = "ce-ferreries-juvenil-nacional";
+  const recoveredPlayers = [
+    ["Oliver Anglada Newport", 1, "2010-05-31", "Portero", "Diestro"],
+    ["Hugo Pérez", 0, "", "Por definir", "Por definir"],
+    ["Maricio", 0, "", "Por definir", "Por definir"],
+    ["Nofre Janer", 7, "2008-01-01", "Defensa", "Diestro"],
+    ["Luca", 0, "", "Por definir", "Por definir"],
+    ["Julián Calzada", 0, "", "Por definir", "Por definir"],
+    ["Carmona", 0, "", "Por definir", "Por definir"],
+    ["Elies", 0, "", "Por definir", "Por definir"],
+    ["Guillem Roselló", 0, "", "Por definir", "Por definir"],
+    ["Liam", 0, "", "Por definir", "Por definir"],
+    ["Yasser", 0, "", "Por definir", "Por definir"],
+    ["Pau Anglés", 0, "", "Por definir", "Por definir"],
+    ["Mohamed", 0, "", "Por definir", "Por definir"],
+    ["Teo Triay", 0, "", "Por definir", "Por definir"],
+    ["Youssef", 0, "", "Por definir", "Por definir"],
+    ["Toni Bosch", 0, "", "Por definir", "Por definir"]
+  ];
+  const normalizedExistingNames = new Set(
+    state.players.map((item) => item.name.trim().toLocaleLowerCase("es"))
+  );
+  recoveredPlayers.forEach(([name, number, birthdate, position, laterality], index) => {
+    if (normalizedExistingNames.has(name.toLocaleLowerCase("es"))) return;
+    state.players.push({
+      id: `recovered-2026-juvenil-nacional-${index + 1}`,
+      teamId,
+      teamName: "CE Ferreries Juvenil Nacional",
+      name,
+      number,
+      birthdate,
+      position,
+      laterality,
+      photo: "",
+      photoPath: "",
+      description: "",
+      career: "",
+      ratings: defaultPlayerRatings(),
+      reports: {}
+    });
+    changed = true;
+  });
+  if (!state.staff.some((item) => item.teamId === teamId && item.name.trim().toLocaleLowerCase("es") === "joan barber")) {
+    state.staff.push({
+      id: "recovered-2026-juvenil-nacional-staff-1",
+      teamId,
+      name: "Joan Barber",
+      role: "Primer entrenador",
+      photo: "",
+      photoPath: ""
+    });
+    changed = true;
+  }
+  if (changed) {
+    state.activeTeamId = teamId;
+    state.selectedPlayerId = state.players.find((item) => item.teamId === teamId)?.id || "";
+  }
+  state.recovery2026RosterVersion = 1;
+  localStorage.setItem(SEASON_STORAGE_KEYS[activeSeason], JSON.stringify(state));
+}
+
 function render() {
+  seasonLabel.textContent = `Temporada ${activeSeason}`;
+  document.title = `CE Ferreries | Temporada ${activeSeason}`;
+  document.querySelectorAll(".season-tab").forEach((button) => {
+    const isActive = button.dataset.season === activeSeason;
+    button.classList.toggle("active", isActive);
+    button.setAttribute("aria-selected", String(isActive));
+  });
   document.querySelectorAll(".nav-button").forEach((button) => {
     button.classList.toggle("active", button.dataset.view === normalizedMainView());
   });
@@ -1024,6 +1411,11 @@ function render() {
 
   contextActionButton.textContent = state.activeView === "matches" ? "Añadir partido" : "Añadir jugador";
   contextActionButton.style.display = ["detail", "playerDetail", "standings", "statistics"].includes(state.activeView) ? "none" : "inline-flex";
+  addMatchVideoButton.style.display = state.activeView === "matches" ? "inline-flex" : "none";
+  toolbarTeamSelectorWrap.style.display = state.activeView === "squad" ? "flex" : "none";
+  toolbarTeamSelector.innerHTML = state.teams
+    .map((item) => `<option value="${escapeAttr(item.id)}" ${item.id === state.activeTeamId ? "selected" : ""}>${escapeHtml(item.name)}</option>`)
+    .join("");
   pageTitle.textContent = pageTitleForView(state.activeView);
 
   renderSquad();
@@ -1054,16 +1446,9 @@ function pageTitleForView(view) {
 
 function renderSquad() {
   const players = activePlayers();
+  const staff = activeStaff();
   views.squad.innerHTML = `
     <div class="team-switcher panel">
-      <label>
-        Equipo
-        <select id="team-selector">
-          ${state.teams
-            .map((item) => `<option value="${item.id}" ${item.id === state.activeTeamId ? "selected" : ""}>${escapeHtml(item.name)}</option>`)
-            .join("")}
-        </select>
-      </label>
       <div class="team-switcher-summary">
         <strong>${escapeHtml(currentTeam().name)}</strong>
         <span class="meta">${players.length} jugadores · ${activeMatches().length} partidos</span>
@@ -1081,17 +1466,27 @@ function renderSquad() {
         .join("")}
     </div>
     ${players.length ? "" : `<div class="empty-state">Este equipo aún no tiene jugadores. Usa “Añadir jugador” para crear su plantilla.</div>`}
+    <section class="staff-section panel">
+      <div class="staff-section-header">
+        <div>
+          <p class="eyebrow">Equipo de trabajo</p>
+          <h2>Staff técnico</h2>
+        </div>
+        <button class="primary-button" id="add-staff-button" type="button">Añadir miembro del staff</button>
+      </div>
+      <div class="staff-grid">
+        ${staff.map(renderStaffCard).join("")}
+      </div>
+      ${staff.length ? "" : `<div class="empty-state staff-empty">Todavía no se ha añadido ningún miembro del staff.</div>`}
+    </section>
   `;
 
-  views.squad.querySelector("#team-selector").addEventListener("change", (event) => {
-    state.activeTeamId = event.target.value;
-    state.selectedPlayerId = activePlayers()[0]?.id || "";
-    state.selectedMatchId = activeMatches()[0]?.id || "";
-    saveState();
-    render();
-  });
   views.squad.querySelector("#edit-team-button").addEventListener("click", () => openTeamDialog(state.activeTeamId));
   views.squad.querySelector("#add-team-button").addEventListener("click", () => openTeamDialog());
+  views.squad.querySelector("#add-staff-button").addEventListener("click", () => openStaffDialog());
+  views.squad.querySelectorAll("[data-edit-staff]").forEach((button) => {
+    button.addEventListener("click", () => openStaffDialog(button.dataset.editStaff));
+  });
   views.squad.querySelectorAll("[data-edit-player]").forEach((button) => {
     button.addEventListener("click", () => openPlayerDialog(button.dataset.editPlayer));
   });
@@ -1104,6 +1499,46 @@ function renderSquad() {
   });
 }
 
+function activeStaff() {
+  return (state.staff || []).filter((item) => item.teamId === state.activeTeamId);
+}
+
+function renderStaffCard(item) {
+  const photoStyle = item.photo ? `style="background-image:url('${escapeAttr(item.photo)}')"` : "";
+  return `
+    <article class="staff-card player-card">
+      <div class="player-main">
+        <div class="avatar" ${photoStyle}>${item.photo ? "" : initials(item.name)}</div>
+        <div>
+          <h3>${escapeHtml(item.name)}</h3>
+          <div class="meta">${escapeHtml(item.role)}</div>
+        </div>
+      </div>
+      <div class="row-actions">
+        <button class="secondary-button" data-edit-staff="${escapeAttr(item.id)}" type="button">Editar</button>
+      </div>
+    </article>
+  `;
+}
+
+function openStaffDialog(id = "") {
+  const member = state.staff.find((item) => item.id === id);
+  document.querySelector("#staff-modal-title").textContent = member ? "Editar miembro del staff" : "Añadir miembro del staff";
+  document.querySelector("#staff-id").value = member?.id || "";
+  document.querySelector("#staff-name").value = member?.name || "";
+  document.querySelector("#staff-role").value = member?.role || "Primer entrenador";
+  staffPhotoInput.value = member?.photo || "";
+  staffPhotoFileInput.value = "";
+  updateStaffPhotoPreview(member?.photo || "");
+  deleteStaffButton.style.display = member ? "inline-flex" : "none";
+  staffDialog.showModal();
+}
+
+function updateStaffPhotoPreview(photo) {
+  staffPhotoPreview.classList.toggle("has-photo", Boolean(photo));
+  staffPhotoPreview.style.backgroundImage = photo ? `url("${photo}")` : "";
+}
+
 function renderPlayerCard(item) {
   const photoStyle = item.photo ? `style="background-image:url('${escapeAttr(item.photo)}')"` : "";
   return `
@@ -1112,9 +1547,9 @@ function renderPlayerCard(item) {
         <div class="avatar" ${photoStyle}>${item.photo ? "" : initials(item.name)}</div>
         <div>
           <h3>${escapeHtml(item.name)}</h3>
-          <div class="meta">Dorsal ${item.number} · ${escapeHtml(item.position)}</div>
-          <div class="meta">Lateralidad: ${escapeHtml(item.laterality || "Diestro")}</div>
-          <div class="meta">Nac. ${formatDate(item.birthdate)}</div>
+          <div class="meta">${item.number ? `Dorsal ${item.number}` : "Dorsal pendiente"} · ${escapeHtml(item.position || "Por definir")}</div>
+          <div class="meta">Lateralidad: ${escapeHtml(item.laterality || "Por definir")}</div>
+          <div class="meta">Nac. ${item.birthdate ? formatDate(item.birthdate) : "pendiente"}</div>
         </div>
       </div>
       <div class="row-actions">
@@ -1240,7 +1675,7 @@ function renderPlayerStatistics(item, body) {
           <p class="meta">Totales acumulados desde sus informes de partido.</p>
         </div>
         <div class="statistics-filters">
-          <span class="filter-chip">Temporada 2026</span>
+          <span class="filter-chip">Temporada ${activeSeason}</span>
           <span class="filter-chip">Todas las competiciones</span>
         </div>
       </div>
@@ -1322,7 +1757,7 @@ function renderPlayerCareer(item, body) {
         <div class="crest small-crest">AC</div>
         <div>
           <strong>${escapeHtml(currentTeam().name)}</strong>
-          <div class="meta">Temporada 2026 · ${escapeHtml(item.position)}</div>
+          <div class="meta">Temporada ${activeSeason} · ${escapeHtml(item.position)}</div>
         </div>
       </div>
       <label class="career-editor">
@@ -1345,8 +1780,9 @@ function renderPlayerReports(item, body) {
       <div class="section-intro">
         <div>
           <h2>Informes de cada partido</h2>
-          <p class="meta">Valoración técnica individual para cada jornada.</p>
+          <p class="meta">Valoración técnica individual para cada jornada · Temporada ${activeSeason}.</p>
         </div>
+        <button class="primary-button" id="add-player-match-report" type="button">Añadir informe de partido</button>
       </div>
       <div class="player-reports-list">
         ${
@@ -1426,6 +1862,10 @@ function renderPlayerReports(item, body) {
       </div>
     </section>
   `;
+
+  body.querySelector("#add-player-match-report").addEventListener("click", () => {
+    openMatchDialog("", true);
+  });
 
   body.querySelector("#create-match-from-player-report")?.addEventListener("click", () => {
     openMatchDialog("", true);
@@ -1564,6 +2004,7 @@ function renderPlayerRating(key, label, value) {
 
 function renderMatches() {
   const matches = activeMatches();
+  const videos = (state.matchVideos || []).filter((item) => item.teamId === state.activeTeamId);
   views.matches.innerHTML = `
     <div class="active-team-context">
       <span class="eyebrow">Equipo seleccionado</span>
@@ -1577,6 +2018,18 @@ function renderMatches() {
         .join("")}
     </div>
     ${matches.length ? "" : `<div class="empty-state">Este equipo todavía no tiene partidos.</div>`}
+    <section class="match-video-library panel">
+      <div class="section-intro">
+        <div>
+          <p class="eyebrow">Contenido audiovisual</p>
+          <h2>Vídeos del equipo</h2>
+        </div>
+      </div>
+      <div class="match-video-grid">
+        ${videos.map(renderTeamMatchVideo).join("")}
+      </div>
+      ${videos.length ? "" : `<div class="empty-state">Todavía no hay vídeos. Usa “Añadir vídeo” para guardar el primero.</div>`}
+    </section>
   `;
 
   views.matches.querySelectorAll("[data-open-match]").forEach((button) => {
@@ -1592,6 +2045,33 @@ function renderMatches() {
   views.matches.querySelectorAll("[data-delete-match]").forEach((button) => {
     button.addEventListener("click", () => deleteMatch(button.dataset.deleteMatch));
   });
+  views.matches.querySelectorAll("[data-delete-team-video]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const id = button.dataset.deleteTeamVideo;
+      const video = state.matchVideos.find((item) => item.id === id);
+      if (!video || !confirm(`¿Eliminar el vídeo “${video.title}”?`)) return;
+      state.matchVideos = state.matchVideos.filter((item) => item.id !== id);
+      saveState();
+      render();
+    });
+  });
+}
+
+function renderTeamMatchVideo(item) {
+  const embedUrl = youtubeEmbedUrl(item.url);
+  return `
+    <article class="match-video-card">
+      ${
+        embedUrl
+          ? `<div class="youtube-video"><iframe src="${escapeAttr(embedUrl)}" title="${escapeAttr(item.title)}" loading="lazy" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe></div>`
+          : `<a class="match-video-placeholder" href="${escapeAttr(item.url)}" target="_blank" rel="noopener noreferrer">Abrir vídeo</a>`
+      }
+      <div class="match-video-card-footer">
+        <strong>${escapeHtml(item.title)}</strong>
+        <button class="danger-button" data-delete-team-video="${escapeAttr(item.id)}" type="button">Eliminar</button>
+      </div>
+    </article>
+  `;
 }
 
 function renderMatchCard(item) {
@@ -1659,15 +2139,16 @@ function renderMatchDetail() {
 }
 
 function renderStandings() {
-  const table = FINAL_STANDINGS;
+  const table = activeSeason === LEGACY_SEASON ? FINAL_STANDINGS : [];
+  const isHistoricalSeason = activeSeason === LEGACY_SEASON;
 
   views.standings.innerHTML = `
     <div class="section-intro">
       <div>
-        <h2>Clasificación final · Cadete Preferente</h2>
-        <p class="meta">Clasificación definitiva de la categoría Cadete Preferente.</p>
+        <h2>${isHistoricalSeason ? "Clasificación final · Cadete Preferente" : `Clasificación · ${activeSeason}`}</h2>
+        <p class="meta">${isHistoricalSeason ? "Clasificación definitiva de la categoría Cadete Preferente." : "La clasificación de la nueva temporada aparecerá aquí cuando se incorporen sus datos."}</p>
       </div>
-      <span class="tag">14 jornadas</span>
+      ${isHistoricalSeason ? `<span class="tag">14 jornadas</span>` : ""}
     </div>
     ${
       table.length
@@ -1705,7 +2186,7 @@ function renderStandings() {
               </table>
             </div>
           </div>`
-        : `<div class="empty-state">No hay datos disponibles para la clasificación.</div>`
+        : `<div class="empty-state">Todavía no hay datos de clasificación para la temporada ${activeSeason}.</div>`
     }
   `;
 }
@@ -2075,6 +2556,8 @@ function syncLegacyLineup(item) {
 }
 
 function renderMatchInformation(item, body) {
+  const videoUrl = safeExternalUrl(item.videoUrl);
+  const videoEmbedUrl = youtubeEmbedUrl(videoUrl);
   body.innerHTML = `
     <section class="panel match-information-panel">
       <div class="section-intro">
@@ -2088,12 +2571,30 @@ function renderMatchInformation(item, body) {
         Notas y observaciones
         <textarea id="match-notes" maxlength="12000" placeholder="Análisis del partido, incidencias, conclusiones y aspectos a mejorar...">${escapeHtml(item.notes || "")}</textarea>
       </label>
+      <div class="match-video-field">
+        <label>
+          Enlace del vídeo del partido
+          <input id="match-video-url" type="url" value="${escapeAttr(item.videoUrl || "")}" placeholder="https://www.youtube.com/watch?v=..." />
+        </label>
+        ${
+          videoEmbedUrl
+            ? `<div class="youtube-video"><iframe src="${escapeAttr(videoEmbedUrl)}" title="Vídeo del partido" loading="lazy" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe></div>`
+            : videoUrl
+              ? `<a class="secondary-button match-video-link" href="${escapeAttr(videoUrl)}" target="_blank" rel="noopener noreferrer">Abrir vídeo</a>`
+              : ""
+        }
+      </div>
     </section>
   `;
   body.querySelector("#match-notes").addEventListener("input", (event) => {
     item.notes = event.target.value;
     saveMatchState(item);
   });
+  body.querySelector("#match-video-url").addEventListener("input", (event) => {
+    item.videoUrl = event.target.value.trim();
+    saveMatchState(item);
+  });
+  body.querySelector("#match-video-url").addEventListener("change", render);
 }
 
 function renderLineup(item, body) {
@@ -2314,6 +2815,8 @@ function addVideoFile(item, type, file) {
 
 function openPlayerDialog(id) {
   const item = state.players.find((playerItem) => playerItem.id === id);
+  playerFormSaveStatus.textContent = item ? "Los cambios se guardan automáticamente" : "Pulsa Guardar para crear el jugador";
+  playerFormSaveStatus.classList.remove("saved");
   document.querySelector("#player-modal-title").textContent = item ? "Editar jugador" : "Nuevo jugador";
   deletePlayerModalButton.style.display = item ? "inline-flex" : "none";
   document.querySelector("#player-id").value = item?.id || "";
@@ -2361,7 +2864,7 @@ function deletePlayer(id) {
     }
   });
   saveState();
-  supabaseDelete("players", "id", id);
+  if (activeSeason === LEGACY_SEASON) supabaseDelete("players", "id", id);
   render();
 }
 
@@ -2371,7 +2874,7 @@ function deleteMatch(id) {
   state.matches = state.matches.filter((matchItem) => matchItem.id !== id);
   state.selectedMatchId = activeMatches()[0]?.id || "";
   saveState();
-  supabaseDelete("matches", "id", id);
+  if (activeSeason === LEGACY_SEASON) supabaseDelete("matches", "id", id);
   render();
 }
 
@@ -2651,6 +3154,11 @@ function youtubeEmbedUrl(value) {
   } catch {
     return "";
   }
+}
+
+function safeExternalUrl(value) {
+  const url = String(value || "").trim();
+  return /^https?:\/\//i.test(url) ? url : "";
 }
 
 async function downloadPlayerPdf(item) {

@@ -111,6 +111,51 @@ button {
   white-space: nowrap;
 }
 
+.season-navigation {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-left: auto;
+}
+
+.season-navigation-label {
+  color: #aeb5bf;
+  font-size: 0.76rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.season-tabs {
+  display: flex;
+  gap: 4px;
+  padding: 4px;
+  border: 1px solid #3a414b;
+  border-radius: 10px;
+  background: #101216;
+}
+
+.season-tab {
+  min-height: 38px;
+  padding: 0 14px;
+  border: 0;
+  border-radius: 7px;
+  color: #bfc6d0;
+  background: transparent;
+  font-weight: 800;
+}
+
+.season-tab:hover {
+  color: #fff;
+  background: #252a31;
+}
+
+.season-tab.active {
+  color: #fff;
+  background: var(--red);
+  box-shadow: 0 4px 14px rgb(183 25 43 / 28%);
+}
+
 .nav-button {
   border: 0;
   border-radius: 8px;
@@ -161,6 +206,31 @@ button {
   gap: 10px;
   align-items: center;
   flex-wrap: wrap;
+}
+
+.header-team-selector {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  color: #aeb5bf;
+  font-size: 0.78rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.header-team-selector select {
+  min-width: 230px;
+  max-width: 300px;
+  min-height: 40px;
+  padding: 0 36px 0 12px;
+  border: 1px solid #3a414b;
+  border-radius: 8px;
+  color: #fff;
+  background: #252a31;
+  font-weight: 700;
+  text-transform: none;
+  letter-spacing: 0;
 }
 
 .primary-button,
@@ -224,7 +294,7 @@ button {
 
 .team-switcher {
   display: grid;
-  grid-template-columns: minmax(220px, 1fr) minmax(220px, 1fr) auto;
+  grid-template-columns: minmax(220px, 1fr) auto;
   align-items: end;
   gap: 18px;
   margin-bottom: 18px;
@@ -265,6 +335,38 @@ button {
   gap: 10px;
 }
 
+.staff-section {
+  margin-top: 24px;
+  padding: 20px;
+}
+
+.staff-section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 18px;
+}
+
+.staff-section-header h2 {
+  margin: 0;
+}
+
+.staff-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
+  gap: 14px;
+}
+
+.staff-card {
+  min-height: 182px;
+  align-content: space-between;
+}
+
+.staff-empty {
+  margin-top: 0;
+}
+
 .active-team-context {
   display: flex;
   align-items: center;
@@ -284,6 +386,16 @@ button {
   background: var(--surface);
   border: 1px solid var(--line);
   border-radius: 8px;
+}
+
+.person-modal-card {
+  height: min(620px, calc(100vh - 26px));
+  align-content: start;
+  overflow-y: auto;
+}
+
+.person-modal-card .modal-actions {
+  margin-top: auto;
 }
 
 .stat {
@@ -861,6 +973,65 @@ button {
 
 .photo-preview.has-photo {
   display: block;
+}
+
+.form-save-status {
+  min-height: 18px;
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 750;
+}
+
+.form-save-status.saved {
+  color: var(--green);
+}
+
+.match-video-field {
+  display: grid;
+  gap: 14px;
+  margin-top: 18px;
+}
+
+.match-video-link {
+  width: fit-content;
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+}
+
+.match-video-library {
+  margin-top: 22px;
+  padding: 20px;
+}
+
+.match-video-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 16px;
+}
+
+.match-video-card {
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: #fff;
+}
+
+.match-video-placeholder {
+  min-height: 180px;
+  display: grid;
+  place-items: center;
+  color: var(--focus);
+  background: var(--soft);
+  font-weight: 800;
+}
+
+.match-video-card-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px;
 }
 
 .player-card h3,
@@ -1893,11 +2064,11 @@ button:focus-visible {
 
 @media (max-width: 920px) {
   .team-switcher {
-    grid-template-columns: 1fr 1fr;
+    grid-template-columns: 1fr auto;
   }
 
   .team-switcher-actions {
-    grid-column: 1 / -1;
+    grid-column: auto;
     justify-content: flex-end;
   }
 
@@ -1917,13 +2088,36 @@ button:focus-visible {
     padding: 14px;
   }
 
+  .season-navigation {
+    width: 100%;
+    margin-left: 0;
+    justify-content: space-between;
+  }
+
+  .header-team-selector {
+    width: 100%;
+  }
+
+  .header-team-selector select {
+    flex: 1;
+    max-width: none;
+  }
+
+  .season-tabs {
+    flex: 1;
+  }
+
+  .season-tab {
+    flex: 1;
+  }
+
   .brand {
     margin-bottom: 12px;
   }
 
   .nav-tabs {
     display: grid;
-    grid-template-columns: repeat(4, minmax(0, 1fr));
+    grid-template-columns: auto minmax(220px, 1fr) repeat(3, minmax(120px, 1fr));
   }
 
   .main-content {
@@ -2010,6 +2204,25 @@ button:focus-visible {
 }
 
 @media (max-width: 560px) {
+  .staff-section-header {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .season-navigation {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .header-team-selector {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .header-team-selector select {
+    width: 100%;
+    min-width: 0;
+  }
   .detail-tabs {
     overflow-x: auto;
     white-space: nowrap;
