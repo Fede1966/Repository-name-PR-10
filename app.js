@@ -789,6 +789,20 @@ async function pushNewSeasonRemoteState(throwOnError = false) {
   if (!hasSupabaseConfig()) return;
   try {
     await supabaseUpsert(
+      "matches",
+      [{
+        id: NEW_SEASON_APP_STATE_MATCH_ID,
+        round: 0,
+        home: "Estado temporada 2026-2027",
+        away: "Estado temporada 2026-2027",
+        date: null,
+        status: "Sistema",
+        score: "",
+        updated_at: new Date().toISOString()
+      }],
+      "id"
+    );
+    await supabaseUpsert(
       "lineups",
       [{
         match_id: NEW_SEASON_APP_STATE_MATCH_ID,
