@@ -2203,6 +2203,7 @@ function renderMatchDetail() {
       <button class="detail-tab ${state.activeDetailTab === "plan" ? "active" : ""}" data-detail-tab="plan" type="button">Plan de partido</button>
       <button class="detail-tab ${state.activeDetailTab === "lineup" ? "active" : ""}" data-detail-tab="lineup" type="button">Alineación</button>
       <button class="detail-tab ${state.activeDetailTab === "information" ? "active" : ""}" data-detail-tab="information" type="button">Información del partido</button>
+      <button class="detail-tab ${state.activeDetailTab === "video" ? "active" : ""}" data-detail-tab="video" type="button">Vídeo</button>
     </div>
     <div id="detail-body"></div>
   `;
@@ -2220,6 +2221,7 @@ function renderMatchDetail() {
   const body = views.detail.querySelector("#detail-body");
   if (state.activeDetailTab === "plan") renderPlan(item, body);
   else if (state.activeDetailTab === "information") renderMatchInformation(item, body);
+  else if (state.activeDetailTab === "video") renderMatchVideo(item, body);
   else renderLineupEditor(item, body);
 }
 
@@ -2641,8 +2643,6 @@ function syncLegacyLineup(item) {
 }
 
 function renderMatchInformation(item, body) {
-  const videoUrl = safeExternalUrl(item.videoUrl);
-  const videoEmbedUrl = youtubeEmbedUrl(videoUrl);
   body.innerHTML = `
     <section class="panel match-information-panel">
       <div class="section-intro">
@@ -2656,9 +2656,30 @@ function renderMatchInformation(item, body) {
         Notas y observaciones
         <textarea id="match-notes" maxlength="12000" placeholder="Análisis del partido, incidencias, conclusiones y aspectos a mejorar...">${escapeHtml(item.notes || "")}</textarea>
       </label>
+    </section>
+  `;
+  body.querySelector("#match-notes").addEventListener("input", (event) => {
+    item.notes = event.target.value;
+    saveMatchState(item);
+  });
+}
+
+function renderMatchVideo(item, body) {
+  const videoUrl = safeExternalUrl(item.videoUrl);
+  const videoEmbedUrl = youtubeEmbedUrl(videoUrl);
+  body.innerHTML = `
+    <section class="panel match-information-panel">
+      <div class="section-intro">
+        <div>
+          <p class="eyebrow">Contenido audiovisual</p>
+          <h2>Vídeo del partido</h2>
+          <p class="meta">Añade un enlace de YouTube para guardarlo y reproducirlo dentro de la ficha.</p>
+        </div>
+        <span class="meta">Los cambios se guardan automáticamente</span>
+      </div>
       <div class="match-video-field">
         <label>
-          Enlace del vídeo del partido
+          Enlace del vídeo
           <input id="match-video-url" type="url" value="${escapeAttr(item.videoUrl || "")}" placeholder="https://www.youtube.com/watch?v=..." />
         </label>
         ${
@@ -2671,10 +2692,6 @@ function renderMatchInformation(item, body) {
       </div>
     </section>
   `;
-  body.querySelector("#match-notes").addEventListener("input", (event) => {
-    item.notes = event.target.value;
-    saveMatchState(item);
-  });
   body.querySelector("#match-video-url").addEventListener("input", (event) => {
     item.videoUrl = event.target.value.trim();
     saveMatchState(item);
