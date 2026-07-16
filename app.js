@@ -386,6 +386,12 @@ matchForm.addEventListener("submit", (event) => {
   }
 });
 
+matchDialog.addEventListener("close", () => {
+  if (matchDialog.returnValue === "cancel") {
+    returnToPlayerReportsAfterMatchSave = false;
+  }
+});
+
 render();
 if (!isLandingPage) {
   initializeSupabase();

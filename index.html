@@ -111,7 +111,7 @@
       <form method="dialog" id="team-form" class="modal-card">
         <div class="modal-header">
           <h2 id="team-modal-title">Nuevo equipo</h2>
-          <button class="icon-button" value="cancel" type="submit" aria-label="Cerrar">×</button>
+          <button class="icon-button" value="cancel" type="submit" formnovalidate aria-label="Cerrar">×</button>
         </div>
         <input type="hidden" id="team-id" />
         <label>
@@ -120,7 +120,7 @@
         </label>
         <div class="modal-actions">
           <button class="danger-button" id="delete-team-button" type="button">Eliminar equipo</button>
-          <button class="secondary-button" value="cancel" type="submit">Cancelar</button>
+          <button class="secondary-button" value="cancel" type="submit" formnovalidate>Cancelar</button>
           <button class="primary-button" id="save-team-button" value="default" type="submit">Crear equipo</button>
         </div>
       </form>
@@ -185,7 +185,7 @@
       <form method="dialog" id="match-form" class="modal-card">
         <div class="modal-header">
           <h2 id="match-modal-title">Nuevo partido</h2>
-          <button class="icon-button" value="cancel" type="submit" aria-label="Cerrar">×</button>
+          <button class="icon-button" value="cancel" type="submit" formnovalidate aria-label="Cerrar">×</button>
         </div>
         <input type="hidden" id="match-id" />
         <div class="form-grid">
@@ -254,7 +254,7 @@
           </label>
         </div>
         <div class="modal-actions">
-          <button class="secondary-button" value="cancel" type="submit">Cancelar</button>
+          <button class="secondary-button" value="cancel" type="submit" formnovalidate>Cancelar</button>
           <button class="primary-button" id="save-match-button" value="default" type="submit">Guardar</button>
         </div>
       </form>
@@ -320,6 +320,6 @@
       </form>
     </dialog>
 
-    <script src="app.js?v=20260716-3"></script>
+    <script src="app.js?v=20260716-4"></script>
   </body>
 </html>
