@@ -1845,7 +1845,15 @@ function renderPlayerCareer(item, body) {
 }
 
 function renderPlayerReports(item, body) {
-  const matches = activeMatches().slice().sort((a, b) => a.round - b.round);
+  const linkedReportMatchIds = new Set(Object.keys(normalizePlayerReports(item.reports)));
+  const matches = state.matches
+    .filter(
+      (matchItem) =>
+        (matchItem.teamId || DEFAULT_TEAM_ID) === state.activeTeamId ||
+        linkedReportMatchIds.has(matchItem.id)
+    )
+    .slice()
+    .sort((a, b) => a.round - b.round);
   body.innerHTML = `
     <section class="panel player-tab-page">
       <div class="section-intro">
