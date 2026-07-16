@@ -110,11 +110,15 @@ const initialState = {
 };
 
 const requestedSeason = new URLSearchParams(window.location.search).get("temporada");
+const requestedView = new URLSearchParams(window.location.search).get("vista");
 const isLandingPage = !requestedSeason;
 let activeSeason = requestedSeason === NEW_SEASON ? NEW_SEASON : LEGACY_SEASON;
 let state = loadState();
 repairMissingTeams();
 recoverKnown2026SeasonData();
+if (["squad", "matches", "standings", "statistics"].includes(requestedView)) {
+  state.activeView = requestedView;
+}
 document.querySelector("#landing-page").hidden = !isLandingPage;
 document.querySelector("#technical-app").hidden = isLandingPage;
 let draggedPlayerId = null;
