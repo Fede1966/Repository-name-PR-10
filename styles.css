@@ -30,9 +30,74 @@ body {
 }
 
 .landing-page {
-  min-height: 100vh;
+  height: 100vh;
+  height: 100dvh;
+  overflow: hidden;
   color: #fff;
   background: #0d1522;
+}
+
+.landing-main,
+.landing-hero-compact {
+  height: 100%;
+}
+
+.landing-hero-compact {
+  min-height: 0;
+}
+
+.landing-hero-compact .landing-hero-photo {
+  object-position: center;
+}
+
+.landing-hero-compact .landing-hero-overlay {
+  background:
+    linear-gradient(90deg, rgb(7 18 35 / 94%) 0%, rgb(7 18 35 / 72%) 43%, rgb(7 18 35 / 8%) 78%),
+    linear-gradient(0deg, rgb(7 18 35 / 54%), transparent 45%);
+}
+
+.landing-centenary-badge {
+  position: absolute;
+  z-index: 2;
+  right: clamp(22px, 5vw, 76px);
+  bottom: clamp(24px, 5vw, 62px);
+  width: clamp(180px, 20vw, 290px);
+  height: clamp(110px, 13vw, 170px);
+  display: grid;
+  grid-template-columns: 1fr auto;
+  place-items: center;
+  padding: 18px 22px;
+  border: 1px solid rgb(255 255 255 / 24%);
+  border-radius: 16px;
+  background: rgb(128 11 27 / 88%);
+  box-shadow: 0 20px 55px rgb(0 0 0 / 30%);
+  backdrop-filter: blur(8px);
+}
+
+.landing-centenary-badge span {
+  grid-row: 1 / 3;
+  color: #fff;
+  font-size: clamp(3.6rem, 7vw, 6.8rem);
+  font-weight: 950;
+  line-height: .75;
+  letter-spacing: -.1em;
+}
+
+.landing-centenary-badge img {
+  width: clamp(42px, 5vw, 68px);
+  height: clamp(42px, 5vw, 68px);
+  object-fit: contain;
+}
+
+.landing-centenary-badge strong {
+  align-self: start;
+  font-style: italic;
+}
+
+.landing-centenary-badge small {
+  grid-column: 1 / -1;
+  font-weight: 850;
+  letter-spacing: .1em;
 }
 
 .landing-header {
@@ -2598,12 +2663,33 @@ button:focus-visible {
   }
 
   .landing-hero {
-    min-height: 760px;
+    min-height: 0;
   }
 
   .landing-hero-content {
     width: 100%;
     padding: 130px 20px 64px;
+  }
+
+  .landing-centenary-badge {
+    right: 18px;
+    bottom: 18px;
+    width: 150px;
+    height: 90px;
+    padding: 12px 14px;
+  }
+
+  .landing-centenary-badge span {
+    font-size: 3.2rem;
+  }
+
+  .landing-centenary-badge img {
+    width: 36px;
+    height: 36px;
+  }
+
+  .landing-centenary-badge small {
+    font-size: .58rem;
   }
 
   .landing-hero h1 {
