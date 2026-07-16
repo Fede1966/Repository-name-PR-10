@@ -110,10 +110,13 @@ const initialState = {
 };
 
 const requestedSeason = new URLSearchParams(window.location.search).get("temporada");
+const isLandingPage = !requestedSeason;
 let activeSeason = requestedSeason === NEW_SEASON ? NEW_SEASON : LEGACY_SEASON;
 let state = loadState();
 repairMissingTeams();
 recoverKnown2026SeasonData();
+document.querySelector("#landing-page").hidden = !isLandingPage;
+document.querySelector("#technical-app").hidden = isLandingPage;
 let draggedPlayerId = null;
 let remoteSaveTimer = null;
 let isPullingRemote = false;
@@ -380,7 +383,9 @@ matchForm.addEventListener("submit", (event) => {
 });
 
 render();
-initializeSupabase();
+if (!isLandingPage) {
+  initializeSupabase();
+}
 
 function player(id, name, number, birthdate, position, laterality = "Diestro", teamId = DEFAULT_TEAM_ID) {
   return {

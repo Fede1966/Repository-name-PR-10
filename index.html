@@ -4,10 +4,73 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>CE Ferreries | Gestión técnica</title>
-    <link rel="stylesheet" href="styles.css?v=20260715-2" />
+    <link rel="stylesheet" href="styles.css?v=20260716-1" />
   </head>
   <body>
-    <div class="app-shell">
+    <section class="landing-page" id="landing-page">
+      <header class="landing-header">
+        <a class="landing-brand" href="./" aria-label="Inicio CE Ferreries">
+          <img src="assets/ce-ferreries-crest.gif" alt="Escudo del CE Ferreries" />
+          <span><strong>CE Ferreries</strong><small>Club Esportiu · 1923</small></span>
+        </a>
+        <a class="landing-access-link" href="?temporada=2026-2027">Acceder al área técnica</a>
+      </header>
+
+      <main>
+        <section class="landing-hero">
+          <img class="landing-hero-photo" src="assets/ce-ferreries-team.webp" alt="Equipo del CE Ferreries en el Camp Sant Bartomeu" />
+          <div class="landing-hero-overlay"></div>
+          <div class="landing-hero-content">
+            <span class="landing-kicker">Ferreries · Menorca</span>
+            <img class="landing-hero-crest" src="assets/ce-ferreries-crest.gif" alt="" />
+            <h1>CE Ferreries</h1>
+            <p>Tradición, formación y sentimiento azulgrana desde 1923.</p>
+            <div class="landing-season-actions">
+              <a class="landing-primary-action" href="?temporada=2026-2027">Temporada 2026-2027</a>
+              <a class="landing-secondary-action" href="?temporada=2025-2026">Temporada 2025-2026</a>
+            </div>
+          </div>
+        </section>
+
+        <section class="landing-club-section">
+          <div class="landing-section-copy">
+            <span class="landing-kicker dark">La casa del Ferre</span>
+            <h2>Camp Sant Bartomeu</h2>
+            <p>El punto de encuentro de nuestros equipos, familias y aficionados. Un espacio para crecer, competir y compartir los valores del club.</p>
+            <dl class="landing-facts">
+              <div><dt>Fundación</dt><dd>1923</dd></div>
+              <div><dt>Identidad</dt><dd>Azulgrana</dd></div>
+              <div><dt>Ubicación</dt><dd>Ferreries</dd></div>
+            </dl>
+          </div>
+          <figure class="landing-field-card">
+            <img src="assets/camp-sant-bartomeu.jpg" alt="Camp Municipal Sant Bartomeu de Ferreries" />
+            <figcaption>Camp Municipal Sant Bartomeu</figcaption>
+          </figure>
+        </section>
+
+        <section class="landing-legacy-section">
+          <div class="landing-centenary-mark" aria-label="Centenario CE Ferreries, 1923-2023">
+            <span class="landing-hundred">100</span>
+            <img src="assets/ce-ferreries-crest.gif" alt="Escudo histórico del CE Ferreries" />
+            <strong>anys</strong>
+            <small>1923 — 2023</small>
+          </div>
+          <div>
+            <span class="landing-kicker">Un siglo de historia</span>
+            <h2>100 años de fútbol en Ferreries</h2>
+            <p>Generaciones de jugadores, técnicos, directivos, socios y familias construyendo una historia compartida.</p>
+          </div>
+        </section>
+      </main>
+
+      <footer class="landing-footer">
+        <img src="assets/ce-ferreries-crest.gif" alt="" />
+        <span>CE Ferreries · Área técnica</span>
+      </footer>
+    </section>
+
+    <div class="app-shell" id="technical-app">
       <aside class="sidebar">
         <div class="brand">
           <div class="crest header-crest">Ferre</div>
@@ -16,6 +79,7 @@
             <span>Área técnica</span>
           </div>
         </div>
+        <a class="home-nav-link" href="./">Inicio</a>
         <div class="season-navigation" aria-label="Temporadas">
           <span class="season-navigation-label">Temporada</span>
           <div class="season-tabs" role="tablist">
@@ -268,6 +332,6 @@
       </form>
     </dialog>
 
-    <script src="app.js?v=20260715-8"></script>
+    <script src="app.js?v=20260716-1"></script>
   </body>
 </html>
