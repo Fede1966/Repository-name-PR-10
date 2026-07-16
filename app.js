@@ -1752,7 +1752,7 @@ function renderPlayerStatistics(item, body) {
         ${renderPlayerStatCard("Pases de gol", totals.goalPasses, "PG", [
           `${formatPerMatch(totals.goalPasses, officialMatches)} por partido`
         ])}
-        ${renderPlayerStatCard("Recuperaciones", totals.recoveries, "RE", [
+        ${renderPlayerStatCard("Balones ganados", totals.recoveries, "BG", [
           `${formatPerMatch(totals.recoveries, officialMatches)} por partido`,
           `${totals.losses} pérdidas`
         ])}
