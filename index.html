@@ -365,6 +365,43 @@
       </form>
     </dialog>
 
-    <script src="app.js?v=20260717-7"></script>
+    <dialog id="match-report-import-dialog" class="modal">
+      <form id="match-report-import-form" class="modal-card acta-modal-card">
+        <div class="modal-header">
+          <div>
+            <p class="eyebrow">Estadísticas oficiales</p>
+            <h2>Importar acta</h2>
+          </div>
+          <button class="icon-button" id="close-match-report-import" type="button" aria-label="Cerrar">×</button>
+        </div>
+        <input id="acta-match-id" type="hidden" />
+        <div class="form-grid">
+          <label>
+            Duración del partido (minutos)
+            <input id="acta-duration" required type="number" min="1" max="130" value="80" />
+          </label>
+          <label>
+            Resultado
+            <input id="acta-score" maxlength="12" placeholder="6-0" />
+          </label>
+        </div>
+        <p class="meta">Para cada jugador indica si fue titular o suplente. Los minutos se calculan desde la entrada hasta la salida.</p>
+        <div class="acta-table-wrap">
+          <table class="acta-table">
+            <thead>
+              <tr><th>Jugador</th><th>Participación</th><th>Entrada</th><th>Salida</th><th>Goles</th><th>Amarillas</th><th>Rojas</th></tr>
+            </thead>
+            <tbody id="acta-player-rows"></tbody>
+          </table>
+        </div>
+        <p class="login-status" id="acta-import-status" role="status"></p>
+        <div class="modal-actions">
+          <button class="secondary-button" id="cancel-match-report-import" type="button">Cancelar</button>
+          <button class="primary-button" type="submit">Confirmar acta</button>
+        </div>
+      </form>
+    </dialog>
+
+    <script src="app.js?v=20260717-8"></script>
   </body>
 </html>

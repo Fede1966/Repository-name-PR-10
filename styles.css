@@ -199,6 +199,41 @@ body {
   transform: translateY(-50%);
 }
 
+.acta-modal-card {
+  width: min(1180px, calc(100vw - 32px));
+  max-height: 90vh;
+}
+
+.acta-table-wrap {
+  overflow: auto;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.acta-table {
+  width: 100%;
+  min-width: 900px;
+  border-collapse: collapse;
+}
+
+.acta-table th,
+.acta-table td {
+  padding: 9px;
+  border-bottom: 1px solid var(--line);
+  text-align: left;
+}
+
+.acta-table th {
+  background: var(--soft);
+  font-size: .72rem;
+  text-transform: uppercase;
+}
+
+.acta-table input,
+.acta-table select {
+  min-width: 82px;
+}
+
 .landing-brand {
   display: flex;
   align-items: center;

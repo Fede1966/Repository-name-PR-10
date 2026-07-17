@@ -185,6 +185,8 @@ const matchVideoForm = document.querySelector("#match-video-form");
 const loginDialog = document.querySelector("#login-dialog");
 const loginForm = document.querySelector("#login-form");
 const loginStatus = document.querySelector("#login-status");
+const matchReportImportDialog = document.querySelector("#match-report-import-dialog");
+const matchReportImportForm = document.querySelector("#match-report-import-form");
 
 document.querySelectorAll(".nav-button").forEach((button) => {
   if (button.dataset.view) button.addEventListener("click", () => setView(button.dataset.view));
@@ -250,6 +252,47 @@ loginForm.addEventListener("submit", async (event) => {
   } finally {
     submitButton.disabled = false;
   }
+});
+
+document.querySelector("#close-match-report-import").addEventListener("click", () => matchReportImportDialog.close());
+document.querySelector("#cancel-match-report-import").addEventListener("click", () => matchReportImportDialog.close());
+
+matchReportImportForm.addEventListener("submit", (event) => {
+  event.preventDefault();
+  const matchId = document.querySelector("#acta-match-id").value;
+  const matchItem = state.matches.find((item) => item.id === matchId);
+  if (!matchItem) return;
+  const duration = clamp(nonNegativeInteger(document.querySelector("#acta-duration").value), 1, 130);
+  const records = {};
+  let yellowCards = 0;
+  let redCards = 0;
+  document.querySelectorAll("#acta-player-rows tr").forEach((row) => {
+    const playerId = row.dataset.playerId;
+    const role = row.querySelector("[data-acta-role]").value;
+    const playerItem = state.players.find((item) => item.id === playerId);
+    if (!playerItem) return;
+    const entry = role === "starter" ? 0 : clamp(nonNegativeInteger(row.querySelector("[data-acta-entry]").value), 0, duration);
+    const exitValue = row.querySelector("[data-acta-exit]").value;
+    const exit = role === "none" ? 0 : exitValue === "" ? duration : clamp(nonNegativeInteger(exitValue), entry, duration);
+    const goals = role === "none" ? 0 : nonNegativeInteger(row.querySelector("[data-acta-goals]").value);
+    const yellows = role === "none" ? 0 : normalizeCardCount(row.querySelector("[data-acta-yellow]").value, 2);
+    const reds = role === "none" ? 0 : normalizeCardCount(row.querySelector("[data-acta-red]").value, 1);
+    const report = ensurePlayerReport(playerItem, matchId);
+    report.minutes = role === "none" ? 0 : Math.max(0, exit - entry);
+    report.goals = goals;
+    report.yellowCards = yellows;
+    report.redCards = reds;
+    yellowCards += yellows;
+    redCards += reds;
+    records[playerId] = { role, entry, exit, goals, yellowCards: yellows, redCards: reds };
+  });
+  matchItem.actaDuration = duration;
+  matchItem.actaPlayers = records;
+  matchItem.score = document.querySelector("#acta-score").value.trim();
+  matchItem.teamStats = { ...normalizeTeamMatchStats(matchItem.teamStats), yellowCards, redCards };
+  saveMatchState(matchItem);
+  matchReportImportDialog.close();
+  render();
 });
 
 function updateLoginButtons(username = "") {
@@ -460,6 +503,8 @@ matchForm.addEventListener("submit", (event) => {
     },
     notes: existing?.notes || "",
     videoUrl: existing?.videoUrl || "",
+    actaDuration: Number(existing?.actaDuration) || 80,
+    actaPlayers: existing?.actaPlayers || {},
     lineupSheets: existing?.lineupSheets || null,
     lineup: existing?.lineup || {},
     formation: existing?.formation || DEFAULT_FORMATION,
@@ -672,6 +717,8 @@ function loadState() {
             teamId: item.teamId || DEFAULT_TEAM_ID,
             competition: item.competition || "league",
             time: item.time || "",
+            actaDuration: Number(item.actaDuration) || 80,
+            actaPlayers: item.actaPlayers || {},
             teamStats: normalizeTeamMatchStats(item.teamStats),
             notes: item.notes || "",
             videoUrl: item.videoUrl || "",
@@ -1219,6 +1266,8 @@ function fromRemoteMatch(item, lineupData, plan) {
     away: item.away,
     date: item.date || "",
     time: lineupData?.time || "",
+    actaDuration: Number(lineupData?.actaDuration) || 80,
+    actaPlayers: lineupData?.actaPlayers || {},
     status: item.status,
     score: item.score || "",
     teamStats: normalizeTeamMatchStats(lineupData?.teamStats),
@@ -1246,6 +1295,8 @@ function toRemoteLineup(item) {
       __teamStats: normalizeTeamMatchStats(item.teamStats),
       __competition: item.competition || "league",
       __matchTime: item.time || "",
+      __actaDuration: Number(item.actaDuration) || 80,
+      __actaPlayers: item.actaPlayers || {},
       __matchNotes: item.notes || "",
       __matchVideoUrl: item.videoUrl || "",
       __lineupSheets: normalizeLineupSheets(item.lineupSheets, item),
@@ -1263,6 +1314,8 @@ function parseRemoteLineup(value) {
   const teamStats = normalizeTeamMatchStats(lineup.__teamStats);
   const competition = lineup.__competition || "league";
   const time = lineup.__matchTime || "";
+  const actaDuration = Number(lineup.__actaDuration) || 80;
+  const actaPlayers = lineup.__actaPlayers || {};
   const notes = lineup.__matchNotes || "";
   const videoUrl = lineup.__matchVideoUrl || "";
   const lineupSheets = lineup.__lineupSheets || null;
@@ -1273,11 +1326,13 @@ function parseRemoteLineup(value) {
   delete lineup.__teamStats;
   delete lineup.__competition;
   delete lineup.__matchTime;
+  delete lineup.__actaDuration;
+  delete lineup.__actaPlayers;
   delete lineup.__matchNotes;
   delete lineup.__matchVideoUrl;
   delete lineup.__lineupSheets;
   delete lineup.__updatedAt;
-  return { lineup, formation, teamId, teamName: remoteTeamName, teamStats, competition, time, notes, videoUrl, lineupSheets, updatedAt };
+  return { lineup, formation, teamId, teamName: remoteTeamName, teamStats, competition, time, actaDuration, actaPlayers, notes, videoUrl, lineupSheets, updatedAt };
 }
 
 function toRemotePlan(item) {
@@ -2372,6 +2427,7 @@ function renderMatchDetail() {
       </div>
       <div class="detail-actions">
         <button class="secondary-button" id="back-to-matches" type="button">Volver</button>
+        <button class="primary-button" id="import-match-report" type="button">Importar acta</button>
         <button class="secondary-button" data-edit-match="${item.id}" type="button">Editar partido</button>
       </div>
     </div>
@@ -2385,6 +2441,7 @@ function renderMatchDetail() {
   `;
 
   views.detail.querySelector("#back-to-matches").addEventListener("click", () => setView("matches"));
+  views.detail.querySelector("#import-match-report").addEventListener("click", () => openMatchReportImport(item));
   views.detail.querySelector("[data-edit-match]").addEventListener("click", () => openMatchDialog(item.id));
   views.detail.querySelectorAll("[data-detail-tab]").forEach((button) => {
     button.addEventListener("click", () => {
@@ -2399,6 +2456,34 @@ function renderMatchDetail() {
   else if (state.activeDetailTab === "information") renderMatchInformation(item, body);
   else if (state.activeDetailTab === "video") renderMatchVideo(item, body);
   else renderLineupEditor(item, body);
+}
+
+function openMatchReportImport(matchItem) {
+  const duration = Number(matchItem.actaDuration) || 80;
+  document.querySelector("#acta-match-id").value = matchItem.id;
+  document.querySelector("#acta-duration").value = duration;
+  document.querySelector("#acta-score").value = matchItem.score || "";
+  document.querySelector("#acta-import-status").textContent = "";
+  document.querySelector("#acta-player-rows").innerHTML = activePlayers()
+    .slice()
+    .sort((a, b) => (a.number || 999) - (b.number || 999) || a.name.localeCompare(b.name, "es"))
+    .map((playerItem) => {
+      const saved = matchItem.actaPlayers?.[playerItem.id];
+      const report = playerReport(playerItem, matchItem.id);
+      const role = saved?.role || (report.minutes ? "starter" : "none");
+      return `
+        <tr data-player-id="${escapeAttr(playerItem.id)}">
+          <td><strong>${playerItem.number || "-"}. ${escapeHtml(playerItem.name)}</strong></td>
+          <td><select data-acta-role><option value="none" ${role === "none" ? "selected" : ""}>No participó</option><option value="starter" ${role === "starter" ? "selected" : ""}>Titular</option><option value="substitute" ${role === "substitute" ? "selected" : ""}>Suplente</option></select></td>
+          <td><input data-acta-entry type="number" min="0" max="${duration}" value="${saved?.entry ?? (role === "starter" ? 0 : "")}" placeholder="-" /></td>
+          <td><input data-acta-exit type="number" min="0" max="${duration}" value="${saved?.exit ?? (report.minutes && role === "starter" ? report.minutes : "")}" placeholder="${duration}" /></td>
+          <td><input data-acta-goals type="number" min="0" value="${saved?.goals ?? report.goals}" /></td>
+          <td><input data-acta-yellow type="number" min="0" max="2" value="${saved?.yellowCards ?? report.yellowCards}" /></td>
+          <td><input data-acta-red type="number" min="0" max="1" value="${saved?.redCards ?? report.redCards}" /></td>
+        </tr>`;
+    })
+    .join("");
+  matchReportImportDialog.showModal();
 }
 
 function renderStandings() {
