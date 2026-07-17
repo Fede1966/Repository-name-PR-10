@@ -1231,6 +1231,15 @@ function activeMatches() {
   return state.matches.filter((item) => (item.teamId || DEFAULT_TEAM_ID) === state.activeTeamId);
 }
 
+function normalizeSearchText(value) {
+  return String(value || "")
+    .toLocaleLowerCase("es")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+}
+
 function uniqueTeamId(name) {
   const base =
     name
@@ -1859,11 +1868,21 @@ function renderPlayerCareer(item, body) {
 
 function renderPlayerReports(item, body) {
   const linkedReportMatchIds = new Set(Object.keys(normalizePlayerReports(item.reports)));
+  const activeTeamName = normalizeSearchText(currentTeam().name);
   const matches = state.matches
     .filter(
-      (matchItem) =>
-        (matchItem.teamId || DEFAULT_TEAM_ID) === state.activeTeamId ||
-        linkedReportMatchIds.has(matchItem.id)
+      (matchItem) => {
+        const homeName = normalizeSearchText(matchItem.home);
+        const awayName = normalizeSearchText(matchItem.away);
+        const belongsToCurrentTeamByName =
+          (homeName && (homeName.includes(activeTeamName) || activeTeamName.includes(homeName))) ||
+          (awayName && (awayName.includes(activeTeamName) || activeTeamName.includes(awayName)));
+        return (
+          (matchItem.teamId || DEFAULT_TEAM_ID) === state.activeTeamId ||
+          linkedReportMatchIds.has(matchItem.id) ||
+          belongsToCurrentTeamByName
+        );
+      }
     )
     .slice()
     .sort((a, b) => a.round - b.round);
