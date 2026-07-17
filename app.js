@@ -277,18 +277,18 @@ matchReportImportForm.addEventListener("submit", async (event) => {
   const submitButton = matchReportImportForm.querySelector('[type="submit"]');
   const file = actaFileInput.files[0];
   submitButton.disabled = true;
+  let actaUploadFailed = false;
   if (file) {
     document.querySelector("#acta-import-status").textContent = "Subiendo el acta...";
     const uploadedActa = await uploadActaFile(file, matchId);
     if (!uploadedActa) {
-      document.querySelector("#acta-import-status").textContent = "No se ha podido subir el archivo.";
-      submitButton.disabled = false;
-      return;
+      actaUploadFailed = true;
+    } else {
+      matchItem.actaFileUrl = uploadedActa.url;
+      matchItem.actaFilePath = uploadedActa.path;
+      matchItem.actaFileName = file.name;
+      matchItem.actaFileType = file.type;
     }
-    matchItem.actaFileUrl = uploadedActa.url;
-    matchItem.actaFilePath = uploadedActa.path;
-    matchItem.actaFileName = file.name;
-    matchItem.actaFileType = file.type;
   }
   const duration = clamp(nonNegativeInteger(document.querySelector("#acta-duration").value), 1, 130);
   const records = {};
@@ -322,6 +322,9 @@ matchReportImportForm.addEventListener("submit", async (event) => {
   matchReportImportDialog.close();
   submitButton.disabled = false;
   render();
+  if (actaUploadFailed) {
+    alert("Los datos del acta se han guardado correctamente, pero el archivo no ha podido subirse. Puedes volver a adjuntarlo más adelante sin repetir los datos.");
+  }
 });
 
 function updateLoginButtons(username = "") {
@@ -1133,14 +1136,24 @@ async function uploadActaFile(file, matchId) {
   if (!hasSupabaseConfig() || !canEdit()) return null;
   try {
     const path = `actas/${matchId}/${Date.now()}-${safeFileName(file.name)}`;
-    await supabaseStorageRequest(`object/${PLAYER_PHOTOS_BUCKET}/${path}`, {
+    const uploadOptions = {
       method: "POST",
-      headers: {
-        "Content-Type": file.type || "application/octet-stream",
-        "x-upsert": "true"
-      },
+      headers: { "Content-Type": file.type || "application/octet-stream", "x-upsert": "true" },
       body: file
-    });
+    };
+    try {
+      await supabaseStorageRequest(`object/${PLAYER_PHOTOS_BUCKET}/${path}`, uploadOptions);
+    } catch (authenticatedError) {
+      const response = await fetch(`${SUPABASE_URL}/storage/v1/object/${PLAYER_PHOTOS_BUCKET}/${path}`, {
+        ...uploadOptions,
+        headers: {
+          ...uploadOptions.headers,
+          apikey: getSupabaseAnonKey(),
+          Authorization: `Bearer ${getSupabaseAnonKey()}`
+        }
+      });
+      if (!response.ok) throw authenticatedError;
+    }
     return {
       path,
       url: `${SUPABASE_URL}/storage/v1/object/public/${PLAYER_PHOTOS_BUCKET}/${encodeStoragePath(path)}`
