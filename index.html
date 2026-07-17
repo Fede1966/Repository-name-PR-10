@@ -350,7 +350,10 @@
         </label>
         <label>
           Contraseña
-          <input id="login-password" required type="password" autocomplete="current-password" />
+          <span class="password-input-wrap">
+            <input id="login-password" required type="password" autocomplete="current-password" />
+            <button class="password-visibility-button" id="toggle-login-password" type="button" aria-pressed="false">Ver</button>
+          </span>
         </label>
         <p class="login-status" id="login-status" role="status"></p>
         <div class="modal-actions">
@@ -360,6 +363,6 @@
       </form>
     </dialog>
 
-    <script src="app.js?v=20260717-6"></script>
+    <script src="app.js?v=20260717-7"></script>
   </body>
 </html>

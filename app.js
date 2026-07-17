@@ -202,6 +202,9 @@ document.querySelectorAll(".login-nav-button").forEach((button) => {
       return;
     }
     loginForm.reset();
+    document.querySelector("#login-password").type = "password";
+    document.querySelector("#toggle-login-password").textContent = "Ver";
+    document.querySelector("#toggle-login-password").setAttribute("aria-pressed", "false");
     loginStatus.textContent = "";
     loginDialog.showModal();
   });
@@ -209,6 +212,13 @@ document.querySelectorAll(".login-nav-button").forEach((button) => {
 
 document.querySelector("#close-login-button").addEventListener("click", () => loginDialog.close());
 document.querySelector("#cancel-login-button").addEventListener("click", () => loginDialog.close());
+document.querySelector("#toggle-login-password").addEventListener("click", (event) => {
+  const passwordInput = document.querySelector("#login-password");
+  const isVisible = passwordInput.type === "text";
+  passwordInput.type = isVisible ? "password" : "text";
+  event.currentTarget.textContent = isVisible ? "Ver" : "Ocultar";
+  event.currentTarget.setAttribute("aria-pressed", String(!isVisible));
+});
 
 loginForm.addEventListener("submit", async (event) => {
   event.preventDefault();
