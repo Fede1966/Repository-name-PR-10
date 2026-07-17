@@ -134,6 +134,7 @@ const requestedView = new URLSearchParams(window.location.search).get("vista");
 const isLandingPage = !requestedSeason;
 let activeSeason = requestedSeason === NEW_SEASON ? NEW_SEASON : LEGACY_SEASON;
 let state = loadState();
+const recoveredCadeteMatchCount = recoverMissingCadeteMatchesFromLocalBackups();
 repairMissingTeams();
 recoverKnown2026SeasonData();
 if (["squad", "matches", "standings", "statistics"].includes(requestedView)) {
@@ -248,6 +249,7 @@ loginForm.addEventListener("submit", async (event) => {
     loginDialog.close();
     updateLoginButtons(username);
     render();
+    if (recoveredCadeteMatchCount) pushRemoteState();
   } catch (error) {
     loginStatus.textContent = error.message;
   } finally {
@@ -967,6 +969,42 @@ function loadState() {
   }
 }
 
+function recoverMissingCadeteMatchesFromLocalBackups() {
+  if (activeSeason !== LEGACY_SEASON) return 0;
+  const isTargetMatch = (item) => {
+    const round = Number(item?.round);
+    const identity = normalizeSearchText(`${item?.teamId || ""} ${item?.teamName || ""} ${item?.home || ""} ${item?.away || ""}`);
+    return [11, 12, 13].includes(round) && identity.includes("cadete") && identity.includes("preferente");
+  };
+  const candidates = [];
+  try {
+    const automatic = JSON.parse(localStorage.getItem(SEASON_BACKUP_KEYS[LEGACY_SEASON]));
+    if (Array.isArray(automatic?.matches)) candidates.push(...automatic.matches);
+  } catch (error) {
+    console.warn("No se pudo leer la copia automática", error);
+  }
+  try {
+    const beforePull = JSON.parse(localStorage.getItem(STORAGE_BACKUP_KEY));
+    if (Array.isArray(beforePull?.state?.matches)) candidates.push(...beforePull.state.matches);
+  } catch (error) {
+    console.warn("No se pudo leer la copia anterior a la sincronización", error);
+  }
+  const existingIds = new Set(state.matches.map((item) => item.id));
+  const existingRounds = new Set(state.matches.filter(isTargetMatch).map((item) => Number(item.round)));
+  const recovered = [];
+  candidates.forEach((item) => {
+    if (!isTargetMatch(item) || existingIds.has(item.id) || existingRounds.has(Number(item.round))) return;
+    recovered.push(item);
+    existingIds.add(item.id);
+    existingRounds.add(Number(item.round));
+  });
+  if (!recovered.length) return 0;
+  state.matches.push(...recovered);
+  state.lastModifiedAt = Date.now();
+  localStorage.setItem(SEASON_STORAGE_KEYS[LEGACY_SEASON], JSON.stringify(state));
+  return recovered.length;
+}
+
 function saveState() {
   state.lastModifiedAt = Date.now();
   const storageKey = SEASON_STORAGE_KEYS[activeSeason];
@@ -1057,6 +1095,7 @@ function queueRemoteSave() {
 async function initializeSupabase() {
   if (!hasSupabaseConfig()) return;
   await pullRemoteState();
+  if (recoveredCadeteMatchCount && canEdit()) await pushRemoteState();
 }
 
 async function pullRemoteState() {
@@ -1500,7 +1539,6 @@ function toRemoteMatch(item) {
   return {
     id: item.id,
     round: item.round,
-    competition: lineupData?.competition || "league",
     home: item.home,
     away: item.away,
     date: item.date || null,
