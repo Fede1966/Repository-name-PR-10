@@ -258,7 +258,7 @@ loginForm.addEventListener("submit", async (event) => {
 document.querySelector("#close-match-report-import").addEventListener("click", () => matchReportImportDialog.close());
 document.querySelector("#cancel-match-report-import").addEventListener("click", () => matchReportImportDialog.close());
 
-actaFileInput.addEventListener("change", () => {
+actaFileInput.addEventListener("change", async () => {
   const file = actaFileInput.files[0];
   const preview = document.querySelector("#acta-file-preview");
   if (!file) return;
@@ -267,7 +267,100 @@ actaFileInput.addEventListener("change", () => {
   } else {
     preview.innerHTML = `<span>PDF seleccionado: ${escapeHtml(file.name)}</span>`;
   }
+  if (file.type.startsWith("image/")) await analyzeActaImage(file);
 });
+
+async function analyzeActaImage(file) {
+  const status = document.querySelector("#acta-import-status");
+  if (!window.Tesseract) {
+    status.textContent = "No se ha podido cargar el lector automático. Puedes completar la tabla manualmente.";
+    return;
+  }
+  status.textContent = "Leyendo el acta: 0%";
+  try {
+    const worker = await Tesseract.createWorker("spa", 1, {
+      logger: (message) => {
+        if (message.status === "recognizing text") {
+          status.textContent = `Leyendo el acta: ${Math.round((message.progress || 0) * 100)}%`;
+        }
+      }
+    });
+    const result = await worker.recognize(file);
+    await worker.terminate();
+    const filled = populateActaFromOcr(result.data.text || "");
+    status.textContent = filled
+      ? "Lectura terminada. Revisa los datos antes de confirmar."
+      : "No se han identificado jugadores con suficiente seguridad. Completa la tabla manualmente.";
+  } catch (error) {
+    console.error("Error leyendo el acta", error);
+    status.textContent = "No se ha podido leer automáticamente. Completa la tabla manualmente.";
+  }
+}
+
+function populateActaFromOcr(text) {
+  const lines = text.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+  const normalizedText = normalizeSearchText(text);
+  const score = text.match(/\b(\d{1,2})\s*-\s*(\d{1,2})\b/);
+  if (score) document.querySelector("#acta-score").value = `${score[1]}-${score[2]}`;
+  const playerRows = [...document.querySelectorAll("#acta-player-rows tr")];
+  const players = playerRows.map((row) => {
+    const player = state.players.find((item) => item.id === row.dataset.playerId);
+    return { row, player, tokens: normalizeSearchText(player?.name).split(" ").filter((token) => token.length > 2) };
+  });
+  const matchPlayer = (value) => {
+    const normalized = normalizeSearchText(value);
+    return players
+      .map((entry) => ({ entry, hits: entry.tokens.filter((token) => normalized.includes(token)).length }))
+      .filter((candidate) => candidate.hits >= Math.min(2, candidate.entry.tokens.length))
+      .sort((a, b) => b.hits - a.hits)[0]?.entry;
+  };
+  const titularesIndex = normalizedText.indexOf("titulares");
+  const suplentesIndex = normalizedText.indexOf("suplentes", titularesIndex + 1);
+  const technicalIndex = normalizedText.indexOf("cuerpo tecnico", suplentesIndex + 1);
+  const startersText = titularesIndex >= 0 && suplentesIndex > titularesIndex
+    ? normalizedText.slice(titularesIndex, suplentesIndex)
+    : normalizedText;
+  const substitutesText = suplentesIndex >= 0
+    ? normalizedText.slice(suplentesIndex, technicalIndex > suplentesIndex ? technicalIndex : undefined)
+    : "";
+  let filled = 0;
+  players.forEach(({ row, tokens }) => {
+    const appearsIn = (section) => tokens.filter((token) => section.includes(token)).length >= Math.min(2, tokens.length);
+    if (appearsIn(startersText)) {
+      row.querySelector("[data-acta-role]").value = "starter";
+      row.querySelector("[data-acta-entry]").value = 0;
+      filled++;
+    } else if (appearsIn(substitutesText)) {
+      row.querySelector("[data-acta-role]").value = "none";
+    }
+  });
+  lines.forEach((line, index) => {
+    const minuteMatch = line.match(/\((\d{1,3})\s*['’]?\)/);
+    if (!minuteMatch) return;
+    const minute = Number(minuteMatch[1]);
+    const outgoing = matchPlayer(line);
+    const incoming = matchPlayer(lines[index - 1] || "");
+    if (outgoing) outgoing.row.querySelector("[data-acta-exit]").value = minute;
+    if (incoming && incoming !== outgoing) {
+      incoming.row.querySelector("[data-acta-role]").value = "substitute";
+      incoming.row.querySelector("[data-acta-entry]").value = minute;
+    }
+    if (/\b\d+\s*-\s*\d+\b/.test(line) && outgoing) {
+      const goalsInput = outgoing.row.querySelector("[data-acta-goals]");
+      goalsInput.value = Number(goalsInput.value || 0) + 1;
+    }
+  });
+  const cardsStart = lines.findIndex((line) => normalizeSearchText(line).includes("tarjetas"));
+  if (cardsStart >= 0) {
+    lines.slice(cardsStart + 1).forEach((line) => {
+      const cardedPlayer = matchPlayer(line);
+      if (cardedPlayer && /\d{1,3}/.test(line)) {
+        cardedPlayer.row.querySelector("[data-acta-yellow]").value = 1;
+      }
+    });
+  }
+  return filled;
+}
 
 matchReportImportForm.addEventListener("submit", async (event) => {
   event.preventDefault();
