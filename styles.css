@@ -283,9 +283,22 @@ body {
 .landing-hero-crest {
   width: clamp(88px, 10vw, 138px);
   height: clamp(88px, 10vw, 138px);
-  margin-bottom: 22px;
+  margin-bottom: 0;
   object-fit: contain;
   filter: drop-shadow(0 14px 28px rgb(0 0 0 / 36%));
+}
+
+.landing-hero-identity {
+  display: flex;
+  align-items: center;
+  gap: clamp(16px, 2vw, 28px);
+  margin-bottom: 24px;
+  transform: translateY(-12px);
+}
+
+.landing-hero-identity .landing-kicker {
+  margin-bottom: 0;
+  font-size: clamp(.78rem, 1.25vw, 1rem);
 }
 
 .landing-kicker {
