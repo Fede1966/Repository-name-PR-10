@@ -285,9 +285,39 @@ async function analyzeActaImage(file) {
         }
       }
     });
+    const dimensions = await imageFileDimensions(file);
     const result = await worker.recognize(file);
+    status.textContent = "Analizando alineaciones y cambios...";
+    const rosterResult = await worker.recognize(file, {
+      rectangle: {
+        left: Math.round(dimensions.width * .27),
+        top: Math.round(dimensions.height * .1),
+        width: Math.round(dimensions.width * .28),
+        height: Math.round(dimensions.height * .48)
+      }
+    });
+    const substitutionsResult = await worker.recognize(file, {
+      rectangle: {
+        left: Math.round(dimensions.width * .27),
+        top: Math.round(dimensions.height * .54),
+        width: Math.round(dimensions.width * .28),
+        height: Math.round(dimensions.height * .44)
+      }
+    });
+    const goalsResult = await worker.recognize(file, {
+      rectangle: {
+        left: 0,
+        top: Math.round(dimensions.height * .34),
+        width: Math.round(dimensions.width * .3),
+        height: Math.round(dimensions.height * .24)
+      }
+    });
     await worker.terminate();
-    const filled = populateActaFromOcr(result.data.text || "");
+    const filled = populateActaFromOcr(result.data.text || "", {
+      roster: rosterResult.data.text || "",
+      substitutions: substitutionsResult.data.text || "",
+      goals: goalsResult.data.text || ""
+    });
     status.textContent = filled
       ? "Lectura terminada. Revisa los datos antes de confirmar."
       : "No se han identificado jugadores con suficiente seguridad. Completa la tabla manualmente.";
@@ -297,9 +327,22 @@ async function analyzeActaImage(file) {
   }
 }
 
-function populateActaFromOcr(text) {
-  const lines = text.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
-  const normalizedText = normalizeSearchText(text);
+function imageFileDimensions(file) {
+  return new Promise((resolve, reject) => {
+    const image = new Image();
+    const url = URL.createObjectURL(file);
+    image.onload = () => {
+      URL.revokeObjectURL(url);
+      resolve({ width: image.naturalWidth, height: image.naturalHeight });
+    };
+    image.onerror = reject;
+    image.src = url;
+  });
+}
+
+function populateActaFromOcr(text, regions = {}) {
+  const lines = `${regions.substitutions || text}\n${regions.goals || ""}`.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+  const normalizedRoster = normalizeSearchText(regions.roster || text);
   const score = text.match(/\b(\d{1,2})\s*-\s*(\d{1,2})\b/);
   if (score) document.querySelector("#acta-score").value = `${score[1]}-${score[2]}`;
   const playerRows = [...document.querySelectorAll("#acta-player-rows tr")];
@@ -314,14 +357,14 @@ function populateActaFromOcr(text) {
       .filter((candidate) => candidate.hits >= Math.min(2, candidate.entry.tokens.length))
       .sort((a, b) => b.hits - a.hits)[0]?.entry;
   };
-  const titularesIndex = normalizedText.indexOf("titulares");
-  const suplentesIndex = normalizedText.indexOf("suplentes", titularesIndex + 1);
-  const technicalIndex = normalizedText.indexOf("cuerpo tecnico", suplentesIndex + 1);
+  const titularesIndex = normalizedRoster.indexOf("titulares");
+  const suplentesIndex = normalizedRoster.indexOf("suplentes", titularesIndex + 1);
+  const technicalIndex = normalizedRoster.indexOf("cuerpo tecnico", suplentesIndex + 1);
   const startersText = titularesIndex >= 0 && suplentesIndex > titularesIndex
-    ? normalizedText.slice(titularesIndex, suplentesIndex)
-    : normalizedText;
+    ? normalizedRoster.slice(titularesIndex, suplentesIndex)
+    : normalizedRoster;
   const substitutesText = suplentesIndex >= 0
-    ? normalizedText.slice(suplentesIndex, technicalIndex > suplentesIndex ? technicalIndex : undefined)
+    ? normalizedRoster.slice(suplentesIndex, technicalIndex > suplentesIndex ? technicalIndex : undefined)
     : "";
   let filled = 0;
   players.forEach(({ row, tokens }) => {
@@ -339,20 +382,24 @@ function populateActaFromOcr(text) {
     if (!minuteMatch) return;
     const minute = Number(minuteMatch[1]);
     const outgoing = matchPlayer(line);
+    if (/\b\d+\s*-\s*\d+\b/.test(line)) {
+      if (outgoing) {
+        const goalsInput = outgoing.row.querySelector("[data-acta-goals]");
+        goalsInput.value = Number(goalsInput.value || 0) + 1;
+      }
+      return;
+    }
     const incoming = matchPlayer(lines[index - 1] || "");
     if (outgoing) outgoing.row.querySelector("[data-acta-exit]").value = minute;
     if (incoming && incoming !== outgoing) {
       incoming.row.querySelector("[data-acta-role]").value = "substitute";
       incoming.row.querySelector("[data-acta-entry]").value = minute;
     }
-    if (/\b\d+\s*-\s*\d+\b/.test(line) && outgoing) {
-      const goalsInput = outgoing.row.querySelector("[data-acta-goals]");
-      goalsInput.value = Number(goalsInput.value || 0) + 1;
-    }
   });
-  const cardsStart = lines.findIndex((line) => normalizeSearchText(line).includes("tarjetas"));
+  const fullLines = text.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+  const cardsStart = fullLines.findIndex((line) => normalizeSearchText(line).includes("tarjetas"));
   if (cardsStart >= 0) {
-    lines.slice(cardsStart + 1).forEach((line) => {
+    fullLines.slice(cardsStart + 1).forEach((line) => {
       const cardedPlayer = matchPlayer(line);
       if (cardedPlayer && /\d{1,3}/.test(line)) {
         cardedPlayer.row.querySelector("[data-acta-yellow]").value = 1;
@@ -409,6 +456,18 @@ matchReportImportForm.addEventListener("submit", async (event) => {
   });
   matchItem.actaDuration = duration;
   matchItem.actaPlayers = records;
+  const ownSide = ownTeamSide(matchItem);
+  matchItem.lineupSheets = normalizeLineupSheets(matchItem.lineupSheets, matchItem);
+  matchItem.lineupSheets[ownSide] = Object.entries(records)
+    .filter(([, record]) => record.role !== "none")
+    .map(([playerId, record]) => ({
+      playerId,
+      name: state.players.find((playerItem) => playerItem.id === playerId)?.name || "",
+      role: record.role === "substitute" ? "substitute" : "starter",
+      changeMinute: record.role === "substitute"
+        ? record.entry
+        : record.exit < duration ? record.exit : ""
+    }));
   matchItem.score = document.querySelector("#acta-score").value.trim();
   matchItem.teamStats = { ...normalizeTeamMatchStats(matchItem.teamStats), yellowCards, redCards };
   saveMatchState(matchItem);
@@ -1581,6 +1640,24 @@ function activeMatches() {
   return state.matches.filter((item) => (item.teamId || DEFAULT_TEAM_ID) === state.activeTeamId);
 }
 
+function playerParticipatedInMatch(playerItem, matchItem) {
+  const actaRole = matchItem.actaPlayers?.[playerItem.id]?.role;
+  return Boolean(
+    (actaRole && actaRole !== "none") ||
+    playerReport(playerItem, matchItem.id).minutes > 0 ||
+    matchItem.lineup?.[playerItem.id]
+  );
+}
+
+function playerStartedMatch(playerItem, matchItem) {
+  const actaRole = matchItem.actaPlayers?.[playerItem.id]?.role;
+  if (actaRole) return actaRole === "starter";
+  const sheets = normalizeLineupSheets(matchItem.lineupSheets, matchItem);
+  return sheets[ownTeamSide(matchItem)].some(
+    (row) => row.playerId === playerItem.id && row.role === "starter"
+  );
+}
+
 function normalizeSearchText(value) {
   return String(value || "")
     .toLocaleLowerCase("es")
@@ -2097,16 +2174,10 @@ function renderPlayerDetail() {
 }
 
 function renderPlayerStatistics(item, body) {
-  const appearances = activeMatches().filter((matchItem) => matchItem.lineup?.[item.id]);
-  const playedAppearances = appearances.filter((matchItem) => Boolean(parseScore(matchItem.score)));
-  const starts = activeMatches().filter((matchItem) => {
-    const sheets = normalizeLineupSheets(matchItem.lineupSheets, matchItem);
-    return sheets[ownTeamSide(matchItem)].some(
-      (row) => row.playerId === item.id && row.role === "starter"
-    );
-  }).length;
+  const appearances = activeMatches().filter((matchItem) => playerParticipatedInMatch(item, matchItem));
+  const starts = activeMatches().filter((matchItem) => playerStartedMatch(item, matchItem)).length;
   const totals = playerReportTotals(item);
-  const officialMatches = playedAppearances.length;
+  const officialMatches = appearances.length;
   const totalPasses = totals.completedPasses + totals.failedPasses;
   const passAccuracy = totalPasses ? (totals.completedPasses / totalPasses) * 100 : 0;
   const latestAppearance = appearances
@@ -2269,7 +2340,7 @@ function renderPlayerReports(item, body) {
           matches.length
             ? matches
                 .map((matchItem) => {
-                  const inLineup = Boolean(matchItem.lineup?.[item.id]);
+                  const inLineup = playerParticipatedInMatch(item, matchItem);
                   const report = playerReport(item, matchItem.id);
                   const videoEmbedUrl = youtubeEmbedUrl(report.youtube);
                   return `
@@ -3724,7 +3795,7 @@ async function downloadPlayerPdf(item) {
   popup.document.write("<p style=\"font:16px Arial;padding:24px\">Preparando la ficha y cargando la fotografía...</p>");
 
   const printableTeamName = playerTeamName(item);
-  const appearances = activeMatches().filter((matchItem) => matchItem.lineup?.[item.id]);
+  const appearances = activeMatches().filter((matchItem) => playerParticipatedInMatch(item, matchItem));
   const totals = playerReportTotals(item);
   const reports = activeMatches()
     .slice()
@@ -4005,14 +4076,9 @@ function buildPlayerStatistics() {
   const totalMatches = matches.length;
   return activePlayers()
     .map((item) => {
-      const appearances = matches.filter((matchItem) => matchItem.lineup?.[item.id]);
-      const starts = matches.filter((matchItem) => {
-        const sheets = normalizeLineupSheets(matchItem.lineupSheets, matchItem);
-        return sheets[ownTeamSide(matchItem)].some(
-          (row) => row.playerId === item.id && row.role === "starter"
-        );
-      }).length;
-      const played = appearances.filter((matchItem) => Boolean(parseScore(matchItem.score))).length;
+      const appearances = matches.filter((matchItem) => playerParticipatedInMatch(item, matchItem));
+      const starts = matches.filter((matchItem) => playerStartedMatch(item, matchItem)).length;
+      const played = appearances.length;
       const totals = playerReportTotals(item);
       return {
         id: item.id,
