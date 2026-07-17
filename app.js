@@ -288,9 +288,24 @@ async function analyzeActaImage(file) {
       }
     });
     const sourceImage = await loadActaImage(file);
-    const rosterImage = preprocessActaRegion(sourceImage, { left: .25, top: .09, width: .32, height: .5 });
-    const substitutionsImage = preprocessActaRegion(sourceImage, { left: .25, top: .5, width: .32, height: .49 });
-    const goalsImage = preprocessActaRegion(sourceImage, { left: 0, top: .32, width: .32, height: .3 });
+    const matchItem = state.matches.find((item) => item.id === document.querySelector("#acta-match-id").value);
+    const ownSide = matchItem ? ownTeamSide(matchItem) : "home";
+    const teamColumn = ownSide === "away"
+      ? { left: .57, width: .42 }
+      : { left: .25, width: .38 };
+    const rosterImage = preprocessActaRegion(sourceImage, {
+      left: teamColumn.left,
+      top: .035,
+      width: teamColumn.width,
+      height: .62
+    });
+    const substitutionsImage = preprocessActaRegion(sourceImage, {
+      left: teamColumn.left,
+      top: .61,
+      width: teamColumn.width,
+      height: .39
+    });
+    const goalsImage = preprocessActaRegion(sourceImage, { left: 0, top: .18, width: .34, height: .3 });
     await worker.setParameters({
       tessedit_pageseg_mode: "3",
       preserve_interword_spaces: "1",
