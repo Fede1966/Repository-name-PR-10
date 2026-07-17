@@ -15,6 +15,26 @@ const SUPABASE_URL = "https://vhmnyjmhnobqmxgulsag.supabase.co";
 const SUPABASE_ANON_KEY =
   "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZobW55am1obm9icW14Z3Vsc2FnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA2NzEyNTMsImV4cCI6MjA5NjI0NzI1M30.Li4R65j3sGHSrIdt7tiubHNDgKrzjXDqcT92BCqZfDA";
 const PLAYER_PHOTOS_BUCKET = "player-photos";
+const AUTH_SESSION_KEY = "ce-ferreries-auth-session";
+let authSession = loadAuthSession();
+
+function loadAuthSession() {
+  try {
+    const session = JSON.parse(localStorage.getItem(AUTH_SESSION_KEY));
+    if (!session?.access_token) return null;
+    if (session.expires_at && Number(session.expires_at) * 1000 <= Date.now()) {
+      localStorage.removeItem(AUTH_SESSION_KEY);
+      return null;
+    }
+    return session;
+  } catch {
+    return null;
+  }
+}
+
+function canEdit() {
+  return Boolean(authSession?.access_token);
+}
 const TEAM_NAME = "Athletic Club";
 const DEFAULT_TEAM_ID = "athletic-club";
 const DEFAULT_TEAMS_VERSION = 2;
@@ -172,6 +192,15 @@ document.querySelectorAll(".nav-button").forEach((button) => {
 
 document.querySelectorAll(".login-nav-button").forEach((button) => {
   button.addEventListener("click", () => {
+    if (canEdit()) {
+      if (confirm("¿Cerrar la sesión de edición?")) {
+        authSession = null;
+        localStorage.removeItem(AUTH_SESSION_KEY);
+        updateLoginButtons();
+        render();
+      }
+      return;
+    }
     loginForm.reset();
     loginStatus.textContent = "";
     loginDialog.showModal();
@@ -197,17 +226,27 @@ loginForm.addEventListener("submit", async (event) => {
     });
     const result = await response.json();
     if (!response.ok || !result.access_token) throw new Error("Usuario o contraseña incorrectos");
-    localStorage.setItem("ce-ferreries-auth-session", JSON.stringify(result));
+    authSession = result;
+    localStorage.setItem(AUTH_SESSION_KEY, JSON.stringify(result));
     loginDialog.close();
-    document.querySelectorAll(".login-nav-button").forEach((button) => {
-      button.textContent = username;
-    });
+    updateLoginButtons(username);
+    render();
   } catch (error) {
     loginStatus.textContent = error.message;
   } finally {
     submitButton.disabled = false;
   }
 });
+
+function updateLoginButtons(username = "") {
+  const label = canEdit()
+    ? username || authSession?.user?.email?.split("@")[0] || "Cerrar sesión"
+    : "Login";
+  document.querySelectorAll(".login-nav-button").forEach((button) => {
+    button.textContent = label;
+    button.classList.toggle("authenticated", canEdit());
+  });
+}
 
 document.querySelectorAll(".season-tab").forEach((button) => {
   button.addEventListener("click", () => switchSeason(button.dataset.season));
@@ -696,7 +735,7 @@ function hasSupabaseConfig() {
 }
 
 function queueRemoteSave() {
-  if (!hasSupabaseConfig() || isPullingRemote) return;
+  if (!hasSupabaseConfig() || !canEdit() || isPullingRemote) return;
   clearTimeout(remoteSaveTimer);
   remoteSaveTimer = setTimeout(() => {
     pushRemoteState();
@@ -803,7 +842,7 @@ function shouldKeepLocalMatch(localMatch, remoteMatch, preferLocal) {
 }
 
 async function pushRemoteState(throwOnError = false) {
-  if (!hasSupabaseConfig()) return;
+  if (!hasSupabaseConfig() || !canEdit()) return;
   if (activeSeason === NEW_SEASON) return pushNewSeasonRemoteState(throwOnError);
   try {
     state.matches = state.matches.filter((item) => !REMOVED_MATCH_IDS.has(item.id));
@@ -850,7 +889,7 @@ async function pullNewSeasonRemoteState() {
 }
 
 async function pushNewSeasonRemoteState(throwOnError = false) {
-  if (!hasSupabaseConfig()) return;
+  if (!hasSupabaseConfig() || !canEdit()) return;
   try {
     await supabaseUpsert(
       "matches",
@@ -886,7 +925,7 @@ async function supabaseRequest(path, options = {}) {
     ...options,
     headers: {
       apikey: getSupabaseAnonKey(),
-      Authorization: `Bearer ${getSupabaseAnonKey()}`,
+      Authorization: `Bearer ${authSession?.access_token || getSupabaseAnonKey()}`,
       "Content-Type": "application/json",
       ...(options.headers || {})
     }
@@ -909,7 +948,7 @@ async function supabaseUpsert(table, rows, conflictColumn) {
 }
 
 async function supabaseDelete(table, column, value) {
-  if (!hasSupabaseConfig()) return;
+  if (!hasSupabaseConfig() || !canEdit()) return;
   try {
     await supabaseRequest(`${table}?${column}=eq.${encodeURIComponent(value)}`, {
       method: "DELETE",
@@ -921,7 +960,7 @@ async function supabaseDelete(table, column, value) {
 }
 
 async function supabaseDeletePlayerPhoto(path) {
-  if (!hasSupabaseConfig() || !path) return;
+  if (!hasSupabaseConfig() || !canEdit() || !path) return;
   try {
     await supabaseStorageRequest(`object/${PLAYER_PHOTOS_BUCKET}`, {
       method: "DELETE",
@@ -938,7 +977,7 @@ async function supabaseStorageRequest(path, options = {}) {
     ...options,
     headers: {
       apikey: getSupabaseAnonKey(),
-      Authorization: `Bearer ${getSupabaseAnonKey()}`,
+      Authorization: `Bearer ${authSession?.access_token || getSupabaseAnonKey()}`,
       ...(options.headers || {})
     }
   });
@@ -1511,6 +1550,25 @@ function render() {
   renderStatistics();
   renderPlayerDetail();
   renderMatchDetail();
+  applyAccessMode();
+}
+
+function applyAccessMode() {
+  const editable = canEdit();
+  document.body.classList.toggle("read-only-mode", !editable);
+  updateLoginButtons();
+  document.querySelectorAll(".main-content input, .main-content textarea, .main-content select").forEach((control) => {
+    control.disabled = !editable;
+  });
+  document.querySelectorAll(".main-content button").forEach((button) => {
+    const navigationOnly = button.matches(
+      "[data-open-player], [data-open-match], [data-player-tab], [data-detail-tab], #back-to-matches"
+    );
+    if (!navigationOnly) button.disabled = !editable;
+  });
+  toolbarTeamSelector.disabled = false;
+  contextActionButton.hidden = !editable;
+  addMatchVideoButton.hidden = !editable;
 }
 
 function normalizedMainView() {

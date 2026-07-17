@@ -142,6 +142,26 @@ body {
   white-space: nowrap;
 }
 
+.login-nav-button.authenticated {
+  color: #fff;
+  background: var(--green);
+}
+
+.read-only-mode .main-content button:disabled,
+.read-only-mode .main-content input:disabled,
+.read-only-mode .main-content select:disabled,
+.read-only-mode .main-content textarea:disabled {
+  cursor: not-allowed;
+}
+
+.read-only-mode .main-content input:disabled,
+.read-only-mode .main-content select:disabled,
+.read-only-mode .main-content textarea:disabled {
+  color: var(--ink);
+  opacity: .78;
+  background: #f1f3f5;
+}
+
 .login-modal-card {
   width: min(440px, calc(100vw - 32px));
 }
