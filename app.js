@@ -270,7 +270,66 @@ actaFileInput.addEventListener("change", async () => {
     preview.innerHTML = `<span>PDF seleccionado: ${escapeHtml(file.name)}</span>`;
   }
   if (file.type.startsWith("image/")) await analyzeActaImage(file);
+  else if (file.type === "application/pdf" || file.name.toLowerCase().endsWith(".pdf")) await analyzeActaPdf(file);
 });
+
+async function analyzeActaPdf(file) {
+  const status = document.querySelector("#acta-import-status");
+  if (!window.pdfjsLib) {
+    status.textContent = "No se ha podido cargar el lector de PDF. Prueba de nuevo o adjunta una imagen.";
+    return;
+  }
+  status.textContent = "Leyendo el PDF original...";
+  try {
+    pdfjsLib.GlobalWorkerOptions.workerSrc = "https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.worker.min.js";
+    const documentData = await file.arrayBuffer();
+    const pdf = await pdfjsLib.getDocument({ data: documentData }).promise;
+    const matchItem = state.matches.find((item) => item.id === document.querySelector("#acta-match-id").value);
+    const ownSide = matchItem ? ownTeamSide(matchItem) : "home";
+    const allLines = [];
+    const teamLines = [];
+    const goalLines = [];
+    for (let pageNumber = 1; pageNumber <= pdf.numPages; pageNumber++) {
+      const page = await pdf.getPage(pageNumber);
+      const viewport = page.getViewport({ scale: 1 });
+      const content = await page.getTextContent();
+      allLines.push(...pdfTextLines(content.items));
+      const teamItems = content.items.filter((item) => {
+        const ratio = Number(item.transform?.[4] || 0) / viewport.width;
+        return ownSide === "away" ? ratio >= .61 : ratio >= .31 && ratio < .61;
+      });
+      teamLines.push(...pdfTextLines(teamItems));
+      goalLines.push(...pdfTextLines(content.items.filter((item) => Number(item.transform?.[4] || 0) / viewport.width < .31)));
+    }
+    const filled = populateActaFromOcr(allLines.join("\n"), {
+      roster: teamLines.join("\n"),
+      substitutions: teamLines.join("\n"),
+      goals: goalLines.join("\n")
+    });
+    status.textContent = filled
+      ? `PDF leído correctamente: ${filled} registros identificados. Revisa y confirma el acta.`
+      : "El PDF contiene texto, pero no se han podido asociar jugadores. Revisa la tabla antes de confirmar.";
+  } catch (error) {
+    console.error("Error leyendo el PDF del acta", error);
+    status.textContent = "No se ha podido leer este PDF. Prueba con el archivo original descargado de la FFIB.";
+  }
+}
+
+function pdfTextLines(items) {
+  const rows = [];
+  items.filter((item) => item?.str?.trim()).forEach((item) => {
+    const y = Number(item.transform?.[5] || 0);
+    let row = rows.find((candidate) => Math.abs(candidate.y - y) <= 2);
+    if (!row) {
+      row = { y, items: [] };
+      rows.push(row);
+    }
+    row.items.push({ x: Number(item.transform?.[4] || 0), text: item.str.trim() });
+  });
+  return rows
+    .sort((a, b) => b.y - a.y)
+    .map((row) => row.items.sort((a, b) => a.x - b.x).map((item) => item.text).join(" "));
+}
 
 async function analyzeActaImage(file) {
   const status = document.querySelector("#acta-import-status");
