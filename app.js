@@ -1043,7 +1043,7 @@ async function supabaseRequest(path, options = {}) {
     ...options,
     headers: {
       apikey: getSupabaseAnonKey(),
-      Authorization: `Bearer ${authSession?.access_token || getSupabaseAnonKey()}`,
+      Authorization: `Bearer ${getSupabaseAnonKey()}`,
       "Content-Type": "application/json",
       ...(options.headers || {})
     }
