@@ -341,69 +341,85 @@ function imageFileDimensions(file) {
 }
 
 function populateActaFromOcr(text, regions = {}) {
-  const lines = `${regions.substitutions || text}\n${regions.goals || ""}`.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
-  const normalizedRoster = normalizeSearchText(regions.roster || text);
+  const rosterLines = (regions.roster || text).split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+  const substitutionLines = (regions.substitutions || text).split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+  const goalLines = (regions.goals || text).split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
   const score = text.match(/\b(\d{1,2})\s*-\s*(\d{1,2})\b/);
   if (score) document.querySelector("#acta-score").value = `${score[1]}-${score[2]}`;
   const playerRows = [...document.querySelectorAll("#acta-player-rows tr")];
   const players = playerRows.map((row) => {
     const player = state.players.find((item) => item.id === row.dataset.playerId);
-    return { row, player, tokens: normalizeSearchText(player?.name).split(" ").filter((token) => token.length > 2) };
+    return {
+      row,
+      player,
+      number: Number(player?.number) || 0,
+      tokens: normalizeSearchText(player?.name).split(" ").filter((token) => token.length > 2)
+    };
   });
   const matchPlayer = (value) => {
     const normalized = normalizeSearchText(value);
+    const numberMatch = String(value).match(/^\s*(\d{1,2})(?:\s|[.,:;-])/);
+    const byNumber = numberMatch
+      ? players.find((entry) => entry.number === Number(numberMatch[1]))
+      : null;
+    if (byNumber) return byNumber;
     return players
-      .map((entry) => ({ entry, hits: entry.tokens.filter((token) => normalized.includes(token)).length }))
-      .filter((candidate) => candidate.hits >= Math.min(2, candidate.entry.tokens.length))
-      .sort((a, b) => b.hits - a.hits)[0]?.entry;
+      .map((entry) => ({
+        entry,
+        hits: entry.tokens.filter((token) => normalized.includes(token)).length,
+        longest: Math.max(0, ...entry.tokens.filter((token) => normalized.includes(token)).map((token) => token.length))
+      }))
+      .filter((candidate) => candidate.hits >= 2 || candidate.longest >= 5)
+      .sort((a, b) => b.hits - a.hits || b.longest - a.longest)[0]?.entry;
   };
-  const titularesIndex = normalizedRoster.indexOf("titulares");
-  const suplentesIndex = normalizedRoster.indexOf("suplentes", titularesIndex + 1);
-  const technicalIndex = normalizedRoster.indexOf("cuerpo tecnico", suplentesIndex + 1);
-  const startersText = titularesIndex >= 0 && suplentesIndex > titularesIndex
-    ? normalizedRoster.slice(titularesIndex, suplentesIndex)
-    : normalizedRoster;
-  const substitutesText = suplentesIndex >= 0
-    ? normalizedRoster.slice(suplentesIndex, technicalIndex > suplentesIndex ? technicalIndex : undefined)
-    : "";
+  const titularesIndex = rosterLines.findIndex((line) => normalizeSearchText(line).includes("titulares"));
+  const suplentesIndex = rosterLines.findIndex((line, index) => index > titularesIndex && normalizeSearchText(line).includes("suplentes"));
+  const technicalIndex = rosterLines.findIndex((line, index) => index > suplentesIndex && normalizeSearchText(line).includes("cuerpo tecnico"));
+  const starterLines = rosterLines.slice(Math.max(0, titularesIndex + 1), suplentesIndex > 0 ? suplentesIndex : rosterLines.length);
+  const substituteRosterLines = suplentesIndex >= 0
+    ? rosterLines.slice(suplentesIndex + 1, technicalIndex > suplentesIndex ? technicalIndex : rosterLines.length)
+    : [];
   let filled = 0;
-  players.forEach(({ row, tokens }) => {
-    const appearsIn = (section) => tokens.filter((token) => section.includes(token)).length >= Math.min(2, tokens.length);
-    if (appearsIn(startersText)) {
-      row.querySelector("[data-acta-role]").value = "starter";
-      row.querySelector("[data-acta-entry]").value = 0;
-      filled++;
-    } else if (appearsIn(substitutesText)) {
-      row.querySelector("[data-acta-role]").value = "none";
+  starterLines.forEach((line) => {
+    const starter = matchPlayer(line);
+    if (!starter || starter.row.querySelector("[data-acta-role]").value === "starter") return;
+    starter.row.querySelector("[data-acta-role]").value = "starter";
+    starter.row.querySelector("[data-acta-entry]").value = 0;
+    filled++;
+  });
+  substituteRosterLines.forEach((line) => {
+    const substitute = matchPlayer(line);
+    if (substitute && substitute.row.querySelector("[data-acta-role]").value !== "starter") {
+      substitute.row.querySelector("[data-acta-role]").value = "none";
     }
   });
-  lines.forEach((line, index) => {
+  substitutionLines.forEach((line, index) => {
     const minuteMatch = line.match(/\((\d{1,3})\s*['’]?\)/);
     if (!minuteMatch) return;
     const minute = Number(minuteMatch[1]);
     const outgoing = matchPlayer(line);
-    if (/\b\d+\s*-\s*\d+\b/.test(line)) {
-      if (outgoing) {
-        const goalsInput = outgoing.row.querySelector("[data-acta-goals]");
-        goalsInput.value = Number(goalsInput.value || 0) + 1;
-      }
-      return;
-    }
-    const incoming = matchPlayer(lines[index - 1] || "");
+    const incoming = matchPlayer(substitutionLines[index - 1] || "");
     if (outgoing) outgoing.row.querySelector("[data-acta-exit]").value = minute;
     if (incoming && incoming !== outgoing) {
       incoming.row.querySelector("[data-acta-role]").value = "substitute";
       incoming.row.querySelector("[data-acta-entry]").value = minute;
+      filled++;
     }
   });
-  const fullLines = text.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
-  const cardsStart = fullLines.findIndex((line) => normalizeSearchText(line).includes("tarjetas"));
+  goalLines.forEach((line) => {
+    if (!/\b\d+\s*-\s*\d+\b/.test(line)) return;
+    const scorer = matchPlayer(line.replace(/^.*?\d+\s*-\s*\d+/, ""));
+    if (!scorer) return;
+    const goalsInput = scorer.row.querySelector("[data-acta-goals]");
+    goalsInput.value = Number(goalsInput.value || 0) + 1;
+  });
+  const cardsStart = substitutionLines.findIndex((line) => normalizeSearchText(line).includes("tarjetas"));
   if (cardsStart >= 0) {
-    fullLines.slice(cardsStart + 1).forEach((line) => {
+    substitutionLines.slice(cardsStart + 1).forEach((line) => {
       const cardedPlayer = matchPlayer(line);
-      if (cardedPlayer && /\d{1,3}/.test(line)) {
-        cardedPlayer.row.querySelector("[data-acta-yellow]").value = 1;
-      }
+      if (!cardedPlayer || !/\d{1,3}/.test(line)) return;
+      const isRed = normalizeSearchText(line).includes("roja");
+      cardedPlayer.row.querySelector(isRed ? "[data-acta-red]" : "[data-acta-yellow]").value = 1;
     });
   }
   return filled;
