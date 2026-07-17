@@ -1136,30 +1136,23 @@ async function uploadActaFile(file, matchId) {
   if (!hasSupabaseConfig() || !canEdit()) return null;
   try {
     const path = `actas/${matchId}/${Date.now()}-${safeFileName(file.name)}`;
-    const uploadOptions = {
+    const response = await fetch(`${SUPABASE_URL}/storage/v1/object/${PLAYER_PHOTOS_BUCKET}/${path}`, {
       method: "POST",
-      headers: { "Content-Type": file.type || "application/octet-stream", "x-upsert": "true" },
+      headers: {
+        apikey: getSupabaseAnonKey(),
+        Authorization: `Bearer ${getSupabaseAnonKey()}`,
+        "Content-Type": file.type || "application/octet-stream",
+        "x-upsert": "true"
+      },
       body: file
-    };
-    try {
-      await supabaseStorageRequest(`object/${PLAYER_PHOTOS_BUCKET}/${path}`, uploadOptions);
-    } catch (authenticatedError) {
-      const response = await fetch(`${SUPABASE_URL}/storage/v1/object/${PLAYER_PHOTOS_BUCKET}/${path}`, {
-        ...uploadOptions,
-        headers: {
-          ...uploadOptions.headers,
-          apikey: getSupabaseAnonKey(),
-          Authorization: `Bearer ${getSupabaseAnonKey()}`
-        }
-      });
-      if (!response.ok) throw authenticatedError;
-    }
+    });
+    if (!response.ok) throw new Error(await response.text());
     return {
       path,
       url: `${SUPABASE_URL}/storage/v1/object/public/${PLAYER_PHOTOS_BUCKET}/${encodeStoragePath(path)}`
     };
   } catch (error) {
-    console.error(error);
+    console.error("No se pudo subir el acta", error);
     return null;
   }
 }
