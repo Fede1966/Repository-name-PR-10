@@ -977,15 +977,18 @@ function recoverMissingCadeteMatchesFromLocalBackups() {
     return [11, 12, 13].includes(round) && identity.includes("cadete") && identity.includes("preferente");
   };
   const candidates = [];
+  const playerCandidates = [];
   try {
     const automatic = JSON.parse(localStorage.getItem(SEASON_BACKUP_KEYS[LEGACY_SEASON]));
     if (Array.isArray(automatic?.matches)) candidates.push(...automatic.matches);
+    if (Array.isArray(automatic?.players)) playerCandidates.push(...automatic.players);
   } catch (error) {
     console.warn("No se pudo leer la copia automática", error);
   }
   try {
     const beforePull = JSON.parse(localStorage.getItem(STORAGE_BACKUP_KEY));
     if (Array.isArray(beforePull?.state?.matches)) candidates.push(...beforePull.state.matches);
+    if (Array.isArray(beforePull?.state?.players)) playerCandidates.push(...beforePull.state.players);
   } catch (error) {
     console.warn("No se pudo leer la copia anterior a la sincronización", error);
   }
@@ -998,11 +1001,26 @@ function recoverMissingCadeteMatchesFromLocalBackups() {
     existingIds.add(item.id);
     existingRounds.add(Number(item.round));
   });
-  if (!recovered.length) return 0;
   state.matches.push(...recovered);
+  const targetMatchIds = new Set(candidates.filter(isTargetMatch).map((item) => item.id));
+  let recoveredReports = 0;
+  state.players.forEach((playerItem) => {
+    const versions = playerCandidates.filter((candidate) => candidate.id === playerItem.id);
+    versions.forEach((candidate) => {
+      Object.entries(candidate.reports || {}).forEach(([matchId, report]) => {
+        if (!targetMatchIds.has(matchId) || !playerReportHasData(normalizePlayerReports({ [matchId]: report })[matchId])) return;
+        const current = normalizePlayerReports({ [matchId]: playerItem.reports?.[matchId] })[matchId];
+        if (playerItem.reports?.[matchId] && playerReportHasData(current)) return;
+        playerItem.reports ||= {};
+        playerItem.reports[matchId] = report;
+        recoveredReports++;
+      });
+    });
+  });
+  if (!recovered.length && !recoveredReports) return 0;
   state.lastModifiedAt = Date.now();
   localStorage.setItem(SEASON_STORAGE_KEYS[LEGACY_SEASON], JSON.stringify(state));
-  return recovered.length;
+  return recovered.length + recoveredReports;
 }
 
 function saveState() {
