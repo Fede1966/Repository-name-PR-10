@@ -242,9 +242,10 @@ body {
 
 .landing-hero h1 {
   margin: 0;
-  font-size: clamp(3.6rem, 9vw, 8rem);
+  font-size: clamp(2.7rem, 8vw, 8rem);
   line-height: .88;
   letter-spacing: -.06em;
+  white-space: nowrap;
 }
 
 .landing-hero p {
@@ -2718,7 +2719,7 @@ button:focus-visible {
   }
 
   .landing-hero h1 {
-    font-size: clamp(3.4rem, 20vw, 5.4rem);
+    font-size: clamp(2.65rem, 13vw, 4.4rem);
   }
 
   .landing-season-actions {
