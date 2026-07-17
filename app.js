@@ -2197,7 +2197,7 @@ function renderPlayerStatistics(item, body) {
         </div>
       </div>
       <div class="player-stat-cards">
-        ${renderFeaturedPlayerStat(playedAppearances.length, totals.minutes, starts)}
+        ${renderFeaturedPlayerStat(officialMatches, totals.minutes, starts)}
         ${renderPlayerStatCard("Goles marcados", totals.goals, "GO")}
         ${renderPlayerStatCard("Asistencias de gol", totals.assists, "AS")}
         ${renderPlayerStatCard("Contribuciones de gol", totals.goals + totals.assists, "CG", [
