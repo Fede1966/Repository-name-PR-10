@@ -375,6 +375,11 @@
           <button class="icon-button" id="close-match-report-import" type="button" aria-label="Cerrar">×</button>
         </div>
         <input id="acta-match-id" type="hidden" />
+        <label>
+          Archivo o fotografía del acta
+          <input id="acta-file" type="file" accept="image/*,.pdf,application/pdf" />
+        </label>
+        <div class="acta-file-preview" id="acta-file-preview"></div>
         <div class="form-grid">
           <label>
             Duración del partido (minutos)
@@ -402,6 +407,6 @@
       </form>
     </dialog>
 
-    <script src="app.js?v=20260717-8"></script>
+    <script src="app.js?v=20260717-9"></script>
   </body>
 </html>

@@ -187,6 +187,7 @@ const loginForm = document.querySelector("#login-form");
 const loginStatus = document.querySelector("#login-status");
 const matchReportImportDialog = document.querySelector("#match-report-import-dialog");
 const matchReportImportForm = document.querySelector("#match-report-import-form");
+const actaFileInput = document.querySelector("#acta-file");
 
 document.querySelectorAll(".nav-button").forEach((button) => {
   if (button.dataset.view) button.addEventListener("click", () => setView(button.dataset.view));
@@ -257,11 +258,38 @@ loginForm.addEventListener("submit", async (event) => {
 document.querySelector("#close-match-report-import").addEventListener("click", () => matchReportImportDialog.close());
 document.querySelector("#cancel-match-report-import").addEventListener("click", () => matchReportImportDialog.close());
 
-matchReportImportForm.addEventListener("submit", (event) => {
+actaFileInput.addEventListener("change", () => {
+  const file = actaFileInput.files[0];
+  const preview = document.querySelector("#acta-file-preview");
+  if (!file) return;
+  if (file.type.startsWith("image/")) {
+    preview.innerHTML = `<img src="${URL.createObjectURL(file)}" alt="Vista previa del acta" /><span>${escapeHtml(file.name)}</span>`;
+  } else {
+    preview.innerHTML = `<span>PDF seleccionado: ${escapeHtml(file.name)}</span>`;
+  }
+});
+
+matchReportImportForm.addEventListener("submit", async (event) => {
   event.preventDefault();
   const matchId = document.querySelector("#acta-match-id").value;
   const matchItem = state.matches.find((item) => item.id === matchId);
   if (!matchItem) return;
+  const submitButton = matchReportImportForm.querySelector('[type="submit"]');
+  const file = actaFileInput.files[0];
+  submitButton.disabled = true;
+  if (file) {
+    document.querySelector("#acta-import-status").textContent = "Subiendo el acta...";
+    const uploadedActa = await uploadActaFile(file, matchId);
+    if (!uploadedActa) {
+      document.querySelector("#acta-import-status").textContent = "No se ha podido subir el archivo.";
+      submitButton.disabled = false;
+      return;
+    }
+    matchItem.actaFileUrl = uploadedActa.url;
+    matchItem.actaFilePath = uploadedActa.path;
+    matchItem.actaFileName = file.name;
+    matchItem.actaFileType = file.type;
+  }
   const duration = clamp(nonNegativeInteger(document.querySelector("#acta-duration").value), 1, 130);
   const records = {};
   let yellowCards = 0;
@@ -292,6 +320,7 @@ matchReportImportForm.addEventListener("submit", (event) => {
   matchItem.teamStats = { ...normalizeTeamMatchStats(matchItem.teamStats), yellowCards, redCards };
   saveMatchState(matchItem);
   matchReportImportDialog.close();
+  submitButton.disabled = false;
   render();
 });
 
@@ -505,6 +534,10 @@ matchForm.addEventListener("submit", (event) => {
     videoUrl: existing?.videoUrl || "",
     actaDuration: Number(existing?.actaDuration) || 80,
     actaPlayers: existing?.actaPlayers || {},
+    actaFileUrl: existing?.actaFileUrl || "",
+    actaFilePath: existing?.actaFilePath || "",
+    actaFileName: existing?.actaFileName || "",
+    actaFileType: existing?.actaFileType || "",
     lineupSheets: existing?.lineupSheets || null,
     lineup: existing?.lineup || {},
     formation: existing?.formation || DEFAULT_FORMATION,
@@ -719,6 +752,10 @@ function loadState() {
             time: item.time || "",
             actaDuration: Number(item.actaDuration) || 80,
             actaPlayers: item.actaPlayers || {},
+            actaFileUrl: item.actaFileUrl || "",
+            actaFilePath: item.actaFilePath || "",
+            actaFileName: item.actaFileName || "",
+            actaFileType: item.actaFileType || "",
             teamStats: normalizeTeamMatchStats(item.teamStats),
             notes: item.notes || "",
             videoUrl: item.videoUrl || "",
@@ -1092,6 +1129,28 @@ async function savePlayerPhoto(file, playerId) {
   }
 }
 
+async function uploadActaFile(file, matchId) {
+  if (!hasSupabaseConfig() || !canEdit()) return null;
+  try {
+    const path = `actas/${matchId}/${Date.now()}-${safeFileName(file.name)}`;
+    await supabaseStorageRequest(`object/${PLAYER_PHOTOS_BUCKET}/${path}`, {
+      method: "POST",
+      headers: {
+        "Content-Type": file.type || "application/octet-stream",
+        "x-upsert": "true"
+      },
+      body: file
+    });
+    return {
+      path,
+      url: `${SUPABASE_URL}/storage/v1/object/public/${PLAYER_PHOTOS_BUCKET}/${encodeStoragePath(path)}`
+    };
+  } catch (error) {
+    console.error(error);
+    return null;
+  }
+}
+
 function toRemotePlayer(item) {
   return {
     id: item.id,
@@ -1268,6 +1327,10 @@ function fromRemoteMatch(item, lineupData, plan) {
     time: lineupData?.time || "",
     actaDuration: Number(lineupData?.actaDuration) || 80,
     actaPlayers: lineupData?.actaPlayers || {},
+    actaFileUrl: lineupData?.actaFileUrl || "",
+    actaFilePath: lineupData?.actaFilePath || "",
+    actaFileName: lineupData?.actaFileName || "",
+    actaFileType: lineupData?.actaFileType || "",
     status: item.status,
     score: item.score || "",
     teamStats: normalizeTeamMatchStats(lineupData?.teamStats),
@@ -1297,6 +1360,12 @@ function toRemoteLineup(item) {
       __matchTime: item.time || "",
       __actaDuration: Number(item.actaDuration) || 80,
       __actaPlayers: item.actaPlayers || {},
+      __actaFile: {
+        url: item.actaFileUrl || "",
+        path: item.actaFilePath || "",
+        name: item.actaFileName || "",
+        type: item.actaFileType || ""
+      },
       __matchNotes: item.notes || "",
       __matchVideoUrl: item.videoUrl || "",
       __lineupSheets: normalizeLineupSheets(item.lineupSheets, item),
@@ -1316,6 +1385,7 @@ function parseRemoteLineup(value) {
   const time = lineup.__matchTime || "";
   const actaDuration = Number(lineup.__actaDuration) || 80;
   const actaPlayers = lineup.__actaPlayers || {};
+  const actaFile = lineup.__actaFile || {};
   const notes = lineup.__matchNotes || "";
   const videoUrl = lineup.__matchVideoUrl || "";
   const lineupSheets = lineup.__lineupSheets || null;
@@ -1328,11 +1398,17 @@ function parseRemoteLineup(value) {
   delete lineup.__matchTime;
   delete lineup.__actaDuration;
   delete lineup.__actaPlayers;
+  delete lineup.__actaFile;
   delete lineup.__matchNotes;
   delete lineup.__matchVideoUrl;
   delete lineup.__lineupSheets;
   delete lineup.__updatedAt;
-  return { lineup, formation, teamId, teamName: remoteTeamName, teamStats, competition, time, actaDuration, actaPlayers, notes, videoUrl, lineupSheets, updatedAt };
+  return {
+    lineup, formation, teamId, teamName: remoteTeamName, teamStats, competition, time,
+    actaDuration, actaPlayers, actaFileUrl: actaFile.url || "", actaFilePath: actaFile.path || "",
+    actaFileName: actaFile.name || "", actaFileType: actaFile.type || "", notes, videoUrl,
+    lineupSheets, updatedAt
+  };
 }
 
 function toRemotePlan(item) {
@@ -2428,6 +2504,7 @@ function renderMatchDetail() {
       <div class="detail-actions">
         <button class="secondary-button" id="back-to-matches" type="button">Volver</button>
         <button class="primary-button" id="import-match-report" type="button">Importar acta</button>
+        ${matchItemActaLink(item)}
         <button class="secondary-button" data-edit-match="${item.id}" type="button">Editar partido</button>
       </div>
     </div>
@@ -2458,12 +2535,24 @@ function renderMatchDetail() {
   else renderLineupEditor(item, body);
 }
 
+function matchItemActaLink(item) {
+  return item.actaFileUrl
+    ? `<a class="secondary-button" href="${escapeAttr(item.actaFileUrl)}" target="_blank" rel="noopener noreferrer">Ver acta</a>`
+    : "";
+}
+
 function openMatchReportImport(matchItem) {
   const duration = Number(matchItem.actaDuration) || 80;
+  actaFileInput.value = "";
   document.querySelector("#acta-match-id").value = matchItem.id;
   document.querySelector("#acta-duration").value = duration;
   document.querySelector("#acta-score").value = matchItem.score || "";
   document.querySelector("#acta-import-status").textContent = "";
+  document.querySelector("#acta-file-preview").innerHTML = matchItem.actaFileUrl
+    ? matchItem.actaFileType?.startsWith("image/")
+      ? `<a href="${escapeAttr(matchItem.actaFileUrl)}" target="_blank" rel="noopener noreferrer"><img src="${escapeAttr(matchItem.actaFileUrl)}" alt="Acta adjunta" /></a><span>${escapeHtml(matchItem.actaFileName || "Acta adjunta")}</span>`
+      : `<a href="${escapeAttr(matchItem.actaFileUrl)}" target="_blank" rel="noopener noreferrer">Abrir ${escapeHtml(matchItem.actaFileName || "acta adjunta")}</a>`
+    : "";
   document.querySelector("#acta-player-rows").innerHTML = activePlayers()
     .slice()
     .sort((a, b) => (a.number || 999) - (b.number || 999) || a.name.localeCompare(b.name, "es"))

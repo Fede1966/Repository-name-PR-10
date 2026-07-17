@@ -210,6 +210,28 @@ body {
   border-radius: 8px;
 }
 
+.acta-file-preview {
+  min-height: 0;
+}
+
+.acta-file-preview img {
+  width: min(360px, 100%);
+  max-height: 220px;
+  display: block;
+  object-fit: contain;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--soft);
+}
+
+.acta-file-preview a,
+.acta-file-preview span {
+  display: inline-flex;
+  margin-top: 8px;
+  color: var(--red);
+  font-weight: 800;
+}
+
 .acta-table {
   width: 100%;
   min-width: 900px;
