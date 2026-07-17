@@ -285,33 +285,21 @@ async function analyzeActaImage(file) {
         }
       }
     });
-    const dimensions = await imageFileDimensions(file);
+    const sourceImage = await loadActaImage(file);
+    const rosterImage = preprocessActaRegion(sourceImage, { left: .25, top: .09, width: .32, height: .5 });
+    const substitutionsImage = preprocessActaRegion(sourceImage, { left: .25, top: .5, width: .32, height: .49 });
+    const goalsImage = preprocessActaRegion(sourceImage, { left: 0, top: .32, width: .32, height: .3 });
+    await worker.setParameters({
+      tessedit_pageseg_mode: "3",
+      preserve_interword_spaces: "1",
+      user_defined_dpi: "300"
+    });
     const result = await worker.recognize(file);
     status.textContent = "Analizando alineaciones y cambios...";
-    const rosterResult = await worker.recognize(file, {
-      rectangle: {
-        left: Math.round(dimensions.width * .27),
-        top: Math.round(dimensions.height * .1),
-        width: Math.round(dimensions.width * .28),
-        height: Math.round(dimensions.height * .48)
-      }
-    });
-    const substitutionsResult = await worker.recognize(file, {
-      rectangle: {
-        left: Math.round(dimensions.width * .27),
-        top: Math.round(dimensions.height * .54),
-        width: Math.round(dimensions.width * .28),
-        height: Math.round(dimensions.height * .44)
-      }
-    });
-    const goalsResult = await worker.recognize(file, {
-      rectangle: {
-        left: 0,
-        top: Math.round(dimensions.height * .34),
-        width: Math.round(dimensions.width * .3),
-        height: Math.round(dimensions.height * .24)
-      }
-    });
+    await worker.setParameters({ tessedit_pageseg_mode: "6" });
+    const rosterResult = await worker.recognize(rosterImage);
+    const substitutionsResult = await worker.recognize(substitutionsImage);
+    const goalsResult = await worker.recognize(goalsImage);
     await worker.terminate();
     const filled = populateActaFromOcr(result.data.text || "", {
       roster: rosterResult.data.text || "",
@@ -327,17 +315,55 @@ async function analyzeActaImage(file) {
   }
 }
 
-function imageFileDimensions(file) {
+function loadActaImage(file) {
   return new Promise((resolve, reject) => {
     const image = new Image();
     const url = URL.createObjectURL(file);
     image.onload = () => {
       URL.revokeObjectURL(url);
-      resolve({ width: image.naturalWidth, height: image.naturalHeight });
+      resolve(image);
     };
-    image.onerror = reject;
+    image.onerror = (error) => {
+      URL.revokeObjectURL(url);
+      reject(error);
+    };
     image.src = url;
   });
+}
+
+function preprocessActaRegion(image, region) {
+  const sourceWidth = Math.round(image.naturalWidth * region.width);
+  const sourceHeight = Math.round(image.naturalHeight * region.height);
+  const scale = image.naturalWidth < 1800 ? 3 : 2;
+  const canvas = document.createElement("canvas");
+  canvas.width = sourceWidth * scale;
+  canvas.height = sourceHeight * scale;
+  const context = canvas.getContext("2d", { willReadFrequently: true });
+  context.imageSmoothingEnabled = true;
+  context.imageSmoothingQuality = "high";
+  context.drawImage(
+    image,
+    Math.round(image.naturalWidth * region.left),
+    Math.round(image.naturalHeight * region.top),
+    sourceWidth,
+    sourceHeight,
+    0,
+    0,
+    canvas.width,
+    canvas.height
+  );
+  const pixels = context.getImageData(0, 0, canvas.width, canvas.height);
+  for (let index = 0; index < pixels.data.length; index += 4) {
+    const gray = Math.round(
+      pixels.data[index] * .299 + pixels.data[index + 1] * .587 + pixels.data[index + 2] * .114
+    );
+    const enhanced = gray < 205 ? Math.max(0, gray * .55) : 255;
+    pixels.data[index] = enhanced;
+    pixels.data[index + 1] = enhanced;
+    pixels.data[index + 2] = enhanced;
+  }
+  context.putImageData(pixels, 0, 0);
+  return canvas.toDataURL("image/png");
 }
 
 function populateActaFromOcr(text, regions = {}) {
