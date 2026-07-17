@@ -214,11 +214,15 @@ loginForm.addEventListener("submit", async (event) => {
   event.preventDefault();
   const username = document.querySelector("#login-username").value.trim().toLocaleLowerCase("es");
   const password = document.querySelector("#login-password").value;
-  const email = `${username.replace(/[^a-z0-9-]/g, "-")}@auth.ce-ferreries.local`;
+  const loginEmails = {
+    admin: "calagaldana@gmail.com"
+  };
+  const email = loginEmails[username];
   const submitButton = loginForm.querySelector('[type="submit"]');
   submitButton.disabled = true;
   loginStatus.textContent = "Comprobando credenciales...";
   try {
+    if (!email) throw new Error("Este usuario todavía no está activado");
     const response = await fetch(`${SUPABASE_URL}/auth/v1/token?grant_type=password`, {
       method: "POST",
       headers: { apikey: SUPABASE_ANON_KEY, "Content-Type": "application/json" },
