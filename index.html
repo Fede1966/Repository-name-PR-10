@@ -190,12 +190,26 @@
         <input type="hidden" id="match-id" />
         <div class="form-grid">
           <label>
-            Jornada
-            <input id="match-round" required type="number" min="1" />
+            Competición
+            <select id="match-competition" required>
+              <option value="friendly">Amistoso</option>
+              <option value="cup">Copa</option>
+              <option value="league">Liga</option>
+            </select>
           </label>
+          <label id="match-round-field">
+            Jornada
+            <input id="match-round" type="number" min="1" />
+          </label>
+        </div>
+        <div class="form-grid">
           <label>
             Fecha
             <input id="match-date" type="date" />
+          </label>
+          <label>
+            Hora
+            <input id="match-time" type="time" />
           </label>
         </div>
         <div class="form-grid">
@@ -346,6 +360,6 @@
       </form>
     </dialog>
 
-    <script src="app.js?v=20260717-4"></script>
+    <script src="app.js?v=20260717-5"></script>
   </body>
 </html>

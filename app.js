@@ -423,12 +423,15 @@ matchForm.addEventListener("submit", (event) => {
   event.preventDefault();
   const id = document.querySelector("#match-id").value || crypto.randomUUID();
   const existing = state.matches.find((item) => item.id === id);
+  const competition = document.querySelector("#match-competition").value;
   const formMatch = {
     id,
     updatedAt: Date.now(),
     teamId: state.activeTeamId,
-    round: Number(document.querySelector("#match-round").value),
+    competition,
+    round: competition === "friendly" ? 0 : Number(document.querySelector("#match-round").value),
     date: document.querySelector("#match-date").value,
+    time: document.querySelector("#match-time").value,
     home: document.querySelector("#match-home").value.trim(),
     away: document.querySelector("#match-away").value.trim(),
     status: document.querySelector("#match-status").value,
@@ -473,6 +476,18 @@ matchForm.addEventListener("submit", (event) => {
     setView("detail");
   }
 });
+
+document.querySelector("#match-competition").addEventListener("change", updateMatchRoundVisibility);
+
+function updateMatchRoundVisibility() {
+  const competition = document.querySelector("#match-competition").value;
+  const roundField = document.querySelector("#match-round-field");
+  const roundInput = document.querySelector("#match-round");
+  const needsRound = competition !== "friendly";
+  roundField.hidden = !needsRound;
+  roundInput.required = needsRound;
+  if (!needsRound) roundInput.value = "";
+}
 
 matchDialog.addEventListener("close", () => {
   if (matchDialog.returnValue === "cancel") {
@@ -641,6 +656,8 @@ function loadState() {
             ...item,
             updatedAt: Number(item.updatedAt) || 0,
             teamId: item.teamId || DEFAULT_TEAM_ID,
+            competition: item.competition || "league",
+            time: item.time || "",
             teamStats: normalizeTeamMatchStats(item.teamStats),
             notes: item.notes || "",
             videoUrl: item.videoUrl || "",
@@ -1163,6 +1180,7 @@ function toRemoteMatch(item) {
   return {
     id: item.id,
     round: item.round,
+    competition: lineupData?.competition || "league",
     home: item.home,
     away: item.away,
     date: item.date || null,
@@ -1186,6 +1204,7 @@ function fromRemoteMatch(item, lineupData, plan) {
     home: item.home,
     away: item.away,
     date: item.date || "",
+    time: lineupData?.time || "",
     status: item.status,
     score: item.score || "",
     teamStats: normalizeTeamMatchStats(lineupData?.teamStats),
@@ -1211,6 +1230,8 @@ function toRemoteLineup(item) {
       __teamId: item.teamId || DEFAULT_TEAM_ID,
       __teamName: teamName(item.teamId),
       __teamStats: normalizeTeamMatchStats(item.teamStats),
+      __competition: item.competition || "league",
+      __matchTime: item.time || "",
       __matchNotes: item.notes || "",
       __matchVideoUrl: item.videoUrl || "",
       __lineupSheets: normalizeLineupSheets(item.lineupSheets, item),
@@ -1226,6 +1247,8 @@ function parseRemoteLineup(value) {
   const teamId = lineup.__teamId || DEFAULT_TEAM_ID;
   const remoteTeamName = lineup.__teamName || "";
   const teamStats = normalizeTeamMatchStats(lineup.__teamStats);
+  const competition = lineup.__competition || "league";
+  const time = lineup.__matchTime || "";
   const notes = lineup.__matchNotes || "";
   const videoUrl = lineup.__matchVideoUrl || "";
   const lineupSheets = lineup.__lineupSheets || null;
@@ -1234,11 +1257,13 @@ function parseRemoteLineup(value) {
   delete lineup.__teamId;
   delete lineup.__teamName;
   delete lineup.__teamStats;
+  delete lineup.__competition;
+  delete lineup.__matchTime;
   delete lineup.__matchNotes;
   delete lineup.__matchVideoUrl;
   delete lineup.__lineupSheets;
   delete lineup.__updatedAt;
-  return { lineup, formation, teamId, teamName: remoteTeamName, teamStats, notes, videoUrl, lineupSheets, updatedAt };
+  return { lineup, formation, teamId, teamName: remoteTeamName, teamStats, competition, time, notes, videoUrl, lineupSheets, updatedAt };
 }
 
 function toRemotePlan(item) {
@@ -2007,9 +2032,9 @@ function renderPlayerReports(item, body) {
                     <article class="player-report-card">
                       <div class="player-report-heading">
                         <div>
-                          <span class="tag">Jornada ${matchItem.round}</span>
+                          <span class="tag">${escapeHtml(matchStageLabel(matchItem))}</span>
                           <h3>${escapeHtml(matchItem.home)} vs ${escapeHtml(matchItem.away)}</h3>
-                          <p class="meta">${matchItem.date ? formatDate(matchItem.date) : "Fecha pendiente"} · ${escapeHtml(matchItem.score || "Sin resultado")}</p>
+                          <p class="meta">${formatMatchSchedule(matchItem)} · ${escapeHtml(matchItem.score || "Sin resultado")}</p>
                         </div>
                         <div class="player-report-heading-actions">
                           <label class="match-rating-control">
@@ -2145,7 +2170,7 @@ function renderPlayerReports(item, body) {
       const matchId = button.dataset.deletePlayerReport;
       const matchItem = matches.find((candidate) => candidate.id === matchId);
       const matchLabel = matchItem
-        ? `Jornada ${matchItem.round}: ${matchItem.home} vs ${matchItem.away}`
+        ? `${matchStageLabel(matchItem)}: ${matchItem.home} vs ${matchItem.away}`
         : "este partido";
       if (!confirm(`¿Eliminar el informe de ${item.name} para ${matchLabel}? Se borrarán también sus estadísticas, valoración y vídeo.`)) {
         return;
@@ -2285,17 +2310,28 @@ function renderTeamMatchVideo(item) {
   `;
 }
 
+function matchStageLabel(item) {
+  if (item.competition === "friendly") return "Amistoso";
+  const competition = item.competition === "cup" ? "Copa" : "Liga";
+  return `${competition} · Jornada ${item.round || "-"}`;
+}
+
+function formatMatchSchedule(item) {
+  const dateLabel = item.date ? formatDate(item.date) : "Fecha pendiente";
+  return item.time ? `${dateLabel} · ${item.time} h` : dateLabel;
+}
+
 function renderMatchCard(item) {
   return `
     <article class="match-card">
       <div class="match-title">
         <div>
-          <span class="tag">Jornada ${item.round}</span>
+          <span class="tag">${escapeHtml(matchStageLabel(item))}</span>
           <h3>${escapeHtml(item.home)} vs ${escapeHtml(item.away)}</h3>
         </div>
         <strong>${escapeHtml(item.score || "-")}</strong>
       </div>
-      <div class="meta">${item.date ? formatDate(item.date) : "Fecha pendiente"} · ${escapeHtml(item.status)}</div>
+      <div class="meta">${formatMatchSchedule(item)} · ${escapeHtml(item.status)}</div>
       <div class="row-actions">
         <button class="primary-button" data-open-match="${item.id}" type="button">Abrir</button>
         <button class="secondary-button" data-edit-match="${item.id}" type="button">Editar</button>
@@ -2316,9 +2352,9 @@ function renderMatchDetail() {
   views.detail.innerHTML = `
     <div class="detail-header">
       <div class="detail-title">
-        <p class="eyebrow">Jornada ${item.round}</p>
+        <p class="eyebrow">${escapeHtml(matchStageLabel(item))}</p>
         <h2>${escapeHtml(item.home)} vs ${escapeHtml(item.away)}</h2>
-        <div class="meta">${item.date ? formatDate(item.date) : "Fecha pendiente"} · ${escapeHtml(item.status)} · Resultado ${escapeHtml(item.score || "-")}</div>
+        <div class="meta">${formatMatchSchedule(item)} · ${escapeHtml(item.status)} · Resultado ${escapeHtml(item.score || "-")}</div>
       </div>
       <div class="detail-actions">
         <button class="secondary-button" id="back-to-matches" type="button">Volver</button>
@@ -3064,8 +3100,10 @@ function openMatchDialog(id, returnToPlayerReports = false) {
   const item = state.matches.find((matchItem) => matchItem.id === id);
   document.querySelector("#match-modal-title").textContent = item ? "Editar partido" : "Nuevo partido";
   document.querySelector("#match-id").value = item?.id || "";
+  document.querySelector("#match-competition").value = item?.competition || "league";
   document.querySelector("#match-round").value = item?.round || nextRound();
   document.querySelector("#match-date").value = item?.date || "";
+  document.querySelector("#match-time").value = item?.time || "";
   document.querySelector("#match-home").value = item?.home || currentTeam().name;
   document.querySelector("#match-away").value = item?.away || "";
   document.querySelector("#match-status").value = item?.status || "Preparación";
@@ -3077,6 +3115,7 @@ function openMatchDialog(id, returnToPlayerReports = false) {
   document.querySelector("#match-penalties-against").value = teamStats.penaltiesAgainst;
   document.querySelector("#match-chances-created").value = teamStats.chancesCreated;
   document.querySelector("#match-chances-against").value = teamStats.chancesAgainst;
+  updateMatchRoundVisibility();
   matchDialog.showModal();
 }
 
