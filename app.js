@@ -371,6 +371,13 @@ matchForm.addEventListener("submit", (event) => {
   const index = state.matches.findIndex((item) => item.id === id);
   if (index >= 0) state.matches[index] = formMatch;
   else state.matches.push(formMatch);
+  if (returnToPlayerReportsAfterMatchSave) {
+    const selectedPlayer = state.players.find((item) => item.id === state.selectedPlayerId);
+    if (selectedPlayer) {
+      formMatch.teamId = selectedPlayer.teamId || state.activeTeamId;
+      ensurePlayerReport(selectedPlayer, id);
+    }
+  }
   state.selectedMatchId = id;
   state.activeDetailTab = "plan";
   saveState();
