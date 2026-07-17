@@ -134,7 +134,7 @@ const requestedView = new URLSearchParams(window.location.search).get("vista");
 const isLandingPage = !requestedSeason;
 let activeSeason = requestedSeason === NEW_SEASON ? NEW_SEASON : LEGACY_SEASON;
 let state = loadState();
-const recoveredCadeteMatchCount = recoverMissingCadeteMatchesFromLocalBackups();
+const recoveredCadeteMatchCount = recoverCadeteSeasonFromLocalBackups();
 repairMissingTeams();
 recoverKnown2026SeasonData();
 if (["squad", "matches", "standings", "statistics"].includes(requestedView)) {
@@ -969,12 +969,12 @@ function loadState() {
   }
 }
 
-function recoverMissingCadeteMatchesFromLocalBackups() {
+function recoverCadeteSeasonFromLocalBackups() {
   if (activeSeason !== LEGACY_SEASON) return 0;
   const isTargetMatch = (item) => {
     const round = Number(item?.round);
     const identity = normalizeSearchText(`${item?.teamId || ""} ${item?.teamName || ""} ${item?.home || ""} ${item?.away || ""}`);
-    return [11, 12, 13].includes(round) && identity.includes("cadete") && identity.includes("preferente");
+    return round >= 1 && round <= 14 && identity.includes("cadete") && identity.includes("preferente");
   };
   const candidates = [];
   const playerCandidates = [];
@@ -995,11 +995,29 @@ function recoverMissingCadeteMatchesFromLocalBackups() {
   const existingIds = new Set(state.matches.map((item) => item.id));
   const existingRounds = new Set(state.matches.filter(isTargetMatch).map((item) => Number(item.round)));
   const recovered = [];
+  let recoveredActas = 0;
+  const actaWeight = (item) =>
+    Object.values(item?.actaPlayers || {}).filter((record) => record?.role && record.role !== "none").length * 10 +
+    (item?.actaFileUrl || item?.actaFileName ? 5 : 0) +
+    Object.keys(item?.lineup || {}).filter((id) => !id.startsWith("__")).length;
   candidates.forEach((item) => {
-    if (!isTargetMatch(item) || existingIds.has(item.id) || existingRounds.has(Number(item.round))) return;
-    recovered.push(item);
-    existingIds.add(item.id);
-    existingRounds.add(Number(item.round));
+    if (!isTargetMatch(item)) return;
+    const current = state.matches.find((matchItem) => matchItem.id === item.id) ||
+      state.matches.find((matchItem) => isTargetMatch(matchItem) && Number(matchItem.round) === Number(item.round));
+    if (current) {
+      if (actaWeight(item) <= actaWeight(current)) return;
+      ["actaDuration", "actaPlayers", "actaFileUrl", "actaFilePath", "actaFileName", "actaFileType", "lineupSheets", "lineup", "teamStats"].forEach((key) => {
+        if (item[key] != null) current[key] = structuredClone(item[key]);
+      });
+      current.updatedAt = Math.max(Number(current.updatedAt) || 0, Number(item.updatedAt) || 0, Date.now());
+      recoveredActas++;
+      return;
+    }
+    if (!existingIds.has(item.id) && !existingRounds.has(Number(item.round))) {
+      recovered.push(item);
+      existingIds.add(item.id);
+      existingRounds.add(Number(item.round));
+    }
   });
   state.matches.push(...recovered);
   const targetMatchIds = new Set(candidates.filter(isTargetMatch).map((item) => item.id));
@@ -1017,10 +1035,10 @@ function recoverMissingCadeteMatchesFromLocalBackups() {
       });
     });
   });
-  if (!recovered.length && !recoveredReports) return 0;
+  if (!recovered.length && !recoveredActas && !recoveredReports) return 0;
   state.lastModifiedAt = Date.now();
   localStorage.setItem(SEASON_STORAGE_KEYS[LEGACY_SEASON], JSON.stringify(state));
-  return recovered.length + recoveredReports;
+  return recovered.length + recoveredActas + recoveredReports;
 }
 
 function saveState() {
