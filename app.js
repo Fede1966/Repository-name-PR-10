@@ -162,9 +162,51 @@ const staffPhotoPreview = document.querySelector("#staff-photo-preview");
 const addMatchVideoButton = document.querySelector("#add-match-video-button");
 const matchVideoDialog = document.querySelector("#match-video-dialog");
 const matchVideoForm = document.querySelector("#match-video-form");
+const loginDialog = document.querySelector("#login-dialog");
+const loginForm = document.querySelector("#login-form");
+const loginStatus = document.querySelector("#login-status");
 
 document.querySelectorAll(".nav-button").forEach((button) => {
-  button.addEventListener("click", () => setView(button.dataset.view));
+  if (button.dataset.view) button.addEventListener("click", () => setView(button.dataset.view));
+});
+
+document.querySelectorAll(".login-nav-button").forEach((button) => {
+  button.addEventListener("click", () => {
+    loginForm.reset();
+    loginStatus.textContent = "";
+    loginDialog.showModal();
+  });
+});
+
+document.querySelector("#close-login-button").addEventListener("click", () => loginDialog.close());
+document.querySelector("#cancel-login-button").addEventListener("click", () => loginDialog.close());
+
+loginForm.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const username = document.querySelector("#login-username").value.trim().toLocaleLowerCase("es");
+  const password = document.querySelector("#login-password").value;
+  const email = `${username.replace(/[^a-z0-9-]/g, "-")}@auth.ce-ferreries.local`;
+  const submitButton = loginForm.querySelector('[type="submit"]');
+  submitButton.disabled = true;
+  loginStatus.textContent = "Comprobando credenciales...";
+  try {
+    const response = await fetch(`${SUPABASE_URL}/auth/v1/token?grant_type=password`, {
+      method: "POST",
+      headers: { apikey: SUPABASE_ANON_KEY, "Content-Type": "application/json" },
+      body: JSON.stringify({ email, password })
+    });
+    const result = await response.json();
+    if (!response.ok || !result.access_token) throw new Error("Usuario o contraseña incorrectos");
+    localStorage.setItem("ce-ferreries-auth-session", JSON.stringify(result));
+    loginDialog.close();
+    document.querySelectorAll(".login-nav-button").forEach((button) => {
+      button.textContent = username;
+    });
+  } catch (error) {
+    loginStatus.textContent = error.message;
+  } finally {
+    submitButton.disabled = false;
+  }
 });
 
 document.querySelectorAll(".season-tab").forEach((button) => {

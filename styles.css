@@ -137,6 +137,23 @@ body {
   display: flex !important;
 }
 
+.login-nav-button {
+  margin-left: auto;
+  white-space: nowrap;
+}
+
+.login-modal-card {
+  width: min(440px, calc(100vw - 32px));
+}
+
+.login-status {
+  min-height: 20px;
+  margin: 0;
+  color: var(--red);
+  font-size: .82rem;
+  font-weight: 750;
+}
+
 .landing-brand {
   display: flex;
   align-items: center;
